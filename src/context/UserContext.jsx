@@ -1,6 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
-import api from "../utils/api";
+import api, {
+  clearApiAuthToken,
+  setApiAuthToken,
+  setApiUnauthorizedHandler,
+} from "../utils/api";
 import {
   createContext,
   useCallback,
@@ -20,6 +24,14 @@ const STORAGE_KEYS = {
   publicKey: "publicKey",
   feedKey: "feedKey",
 };
+
+function persistUser(nextUser) {
+  if (!nextUser) {
+    return AsyncStorage.removeItem(STORAGE_KEYS.user);
+  }
+
+  return AsyncStorage.setItem(STORAGE_KEYS.user, JSON.stringify(nextUser));
+}
 
 async function safeGetSecureItem(key) {
   try {
@@ -52,6 +64,14 @@ function parseUser(raw) {
   } catch {
     return null;
   }
+}
+
+function persistToken(nextToken) {
+  if (!nextToken) {
+    return AsyncStorage.removeItem(STORAGE_KEYS.token);
+  }
+
+  return AsyncStorage.setItem(STORAGE_KEYS.token, nextToken);
 }
 
 export function UserProvider({ children }) {
@@ -103,8 +123,13 @@ export function UserProvider({ children }) {
       ]);
 
       if (!mountedRef.current) return;
-      setUser(parseUser(userRaw));
-      setToken(storedToken && storedToken !== "null" ? storedToken : null);
+      const parsedUser = parseUser(userRaw);
+      const normalizedToken =
+        storedToken && storedToken !== "null" ? storedToken : null;
+
+      setUser(parsedUser);
+      setToken(normalizedToken);
+      setApiAuthToken(normalizedToken);
       setPrivateKey(pk);
       setPublicKey(pub);
       setFeedKey(fk);
@@ -160,6 +185,40 @@ export function UserProvider({ children }) {
     };
   }, []);
 
+  useEffect(() => {
+    setApiUnauthorizedHandler(async () => {
+      await Promise.all([
+        safeDeleteSecureItem(STORAGE_KEYS.privateKey),
+        safeDeleteSecureItem(STORAGE_KEYS.publicKey),
+        safeDeleteSecureItem(STORAGE_KEYS.feedKey),
+        safeRemoveStorageItem(STORAGE_KEYS.user),
+        safeRemoveStorageItem(STORAGE_KEYS.token),
+        safeRemoveStorageItem("followingStatus"),
+        safeRemoveStorageItem("activities"),
+        safeRemoveStorageItem("likedPosts"),
+        safeRemoveStorageItem("dislikedPosts"),
+        safeRemoveStorageItem("repostedPosts"),
+      ]);
+
+      setUser(null);
+      setToken(null);
+      clearApiAuthToken();
+      setPrivateKey(null);
+      setPublicKey(null);
+      setFeedKey(null);
+      setFeedKeysCache({});
+      setFollowingStatus({});
+      setActivities([]);
+      setLikedPosts({});
+      setDislikedPosts({});
+      setRepostedPosts({});
+    });
+
+    return () => {
+      setApiUnauthorizedHandler(null);
+    };
+  }, []);
+
   const cacheFeedKey = useCallback((uid, key) => {
     if (!uid || !key) return;
     setFeedKeysCache((prev) => {
@@ -198,157 +257,187 @@ export function UserProvider({ children }) {
   };
 
   // Engagement action handlers
-  const toggleLike = (postId) => {
-    const currentlyLiked = !!likedPosts[postId];
-    const nextLiked = !currentlyLiked;
+  const toggleLike = useCallback(
+    (postId) => {
+      const currentlyLiked = !!likedPosts[postId];
+      const nextLiked = !currentlyLiked;
 
-    setLikedPosts((prev) => {
-      const next = { ...prev, [postId]: nextLiked };
-      AsyncStorage.setItem("likedPosts", JSON.stringify(next)).catch(() => {});
-      return next;
-    });
-
-    if (nextLiked) {
-      setDislikedPosts((prev) => {
-        const next = { ...prev, [postId]: false };
-        AsyncStorage.setItem("dislikedPosts", JSON.stringify(next)).catch(
-          () => {},
-        );
-        return next;
-      });
-    }
-
-    api
-      .post(`/posts/${postId}/like`)
-      .then((res) => {
-        const serverLiked = res.data.liked;
-        if (serverLiked !== nextLiked) {
-          setLikedPosts((prev) => {
-            const next = { ...prev, [postId]: serverLiked };
-            AsyncStorage.setItem("likedPosts", JSON.stringify(next)).catch(
-              () => {},
-            );
-            return next;
-          });
-        }
-      })
-      .catch((e) => {
-        console.error("Error toggling like in background:", e);
-        setLikedPosts((prev) => {
-          const next = { ...prev, [postId]: currentlyLiked };
-          AsyncStorage.setItem("likedPosts", JSON.stringify(next)).catch(
-            () => {},
-          );
-          return next;
-        });
-      });
-
-    return { liked: nextLiked };
-  };
-
-  const toggleDislike = (postId) => {
-    const currentlyDisliked = !!dislikedPosts[postId];
-    const nextDisliked = !currentlyDisliked;
-
-    setDislikedPosts((prev) => {
-      const next = { ...prev, [postId]: nextDisliked };
-      AsyncStorage.setItem("dislikedPosts", JSON.stringify(next)).catch(
-        () => {},
-      );
-      return next;
-    });
-
-    if (nextDisliked) {
       setLikedPosts((prev) => {
-        const next = { ...prev, [postId]: false };
+        const next = { ...prev, [postId]: nextLiked };
         AsyncStorage.setItem("likedPosts", JSON.stringify(next)).catch(
           () => {},
         );
         return next;
       });
-    }
 
-    api
-      .post(`/posts/${postId}/dislike`)
-      .then((res) => {
-        const serverDisliked = res.data.disliked;
-        if (serverDisliked !== nextDisliked) {
-          setDislikedPosts((prev) => {
-            const next = { ...prev, [postId]: serverDisliked };
-            AsyncStorage.setItem("dislikedPosts", JSON.stringify(next)).catch(
-              () => {},
-            );
-            return next;
-          });
-        }
-      })
-      .catch((e) => {
-        console.error("Error toggling dislike in background:", e);
+      if (nextLiked) {
         setDislikedPosts((prev) => {
-          const next = { ...prev, [postId]: currentlyDisliked };
+          const next = { ...prev, [postId]: false };
           AsyncStorage.setItem("dislikedPosts", JSON.stringify(next)).catch(
             () => {},
           );
           return next;
         });
+      }
+
+      api
+        .post(`/posts/${postId}/like`)
+        .then((res) => {
+          const serverLiked = res.data.liked;
+          if (serverLiked !== nextLiked) {
+            setLikedPosts((prev) => {
+              const next = { ...prev, [postId]: serverLiked };
+              AsyncStorage.setItem("likedPosts", JSON.stringify(next)).catch(
+                () => {},
+              );
+              return next;
+            });
+          }
+        })
+        .catch((e) => {
+          console.error("Error toggling like in background:", e);
+          setLikedPosts((prev) => {
+            const next = { ...prev, [postId]: currentlyLiked };
+            AsyncStorage.setItem("likedPosts", JSON.stringify(next)).catch(
+              () => {},
+            );
+            return next;
+          });
+        });
+
+      return { liked: nextLiked };
+    },
+    [likedPosts],
+  );
+
+  const toggleDislike = useCallback(
+    (postId) => {
+      const currentlyDisliked = !!dislikedPosts[postId];
+      const nextDisliked = !currentlyDisliked;
+
+      setDislikedPosts((prev) => {
+        const next = { ...prev, [postId]: nextDisliked };
+        AsyncStorage.setItem("dislikedPosts", JSON.stringify(next)).catch(
+          () => {},
+        );
+        return next;
       });
 
-    return { disliked: nextDisliked };
-  };
+      if (nextDisliked) {
+        setLikedPosts((prev) => {
+          const next = { ...prev, [postId]: false };
+          AsyncStorage.setItem("likedPosts", JSON.stringify(next)).catch(
+            () => {},
+          );
+          return next;
+        });
+      }
 
-  const toggleRepost = (postId) => {
-    const currentlyReposted = !!repostedPosts[postId];
-    const nextReposted = !currentlyReposted;
+      api
+        .post(`/posts/${postId}/dislike`)
+        .then((res) => {
+          const serverDisliked = res.data.disliked;
+          if (serverDisliked !== nextDisliked) {
+            setDislikedPosts((prev) => {
+              const next = { ...prev, [postId]: serverDisliked };
+              AsyncStorage.setItem("dislikedPosts", JSON.stringify(next)).catch(
+                () => {},
+              );
+              return next;
+            });
+          }
+        })
+        .catch((e) => {
+          console.error("Error toggling dislike in background:", e);
+          setDislikedPosts((prev) => {
+            const next = { ...prev, [postId]: currentlyDisliked };
+            AsyncStorage.setItem("dislikedPosts", JSON.stringify(next)).catch(
+              () => {},
+            );
+            return next;
+          });
+        });
 
-    setRepostedPosts((prev) => {
-      const next = { ...prev, [postId]: nextReposted };
-      AsyncStorage.setItem("repostedPosts", JSON.stringify(next)).catch(
-        () => {},
-      );
-      return next;
-    });
+      return { disliked: nextDisliked };
+    },
+    [dislikedPosts],
+  );
 
-    api
-      .post(`/posts/${postId}/repost`)
-      .then((res) => {
-        const serverReposted = res.data.reposted;
-        if (serverReposted !== nextReposted) {
+  const toggleRepost = useCallback(
+    (postId) => {
+      const currentlyReposted = !!repostedPosts[postId];
+      const nextReposted = !currentlyReposted;
+
+      setRepostedPosts((prev) => {
+        const next = { ...prev, [postId]: nextReposted };
+        AsyncStorage.setItem("repostedPosts", JSON.stringify(next)).catch(
+          () => {},
+        );
+        return next;
+      });
+
+      api
+        .post(`/posts/${postId}/repost`)
+        .then((res) => {
+          const serverReposted = res.data.reposted;
+          if (serverReposted !== nextReposted) {
+            setRepostedPosts((prev) => {
+              const next = { ...prev, [postId]: serverReposted };
+              AsyncStorage.setItem("repostedPosts", JSON.stringify(next)).catch(
+                () => {},
+              );
+              return next;
+            });
+          }
+        })
+        .catch((e) => {
+          console.error("Error toggling repost in background:", e);
           setRepostedPosts((prev) => {
-            const next = { ...prev, [postId]: serverReposted };
+            const next = { ...prev, [postId]: currentlyReposted };
             AsyncStorage.setItem("repostedPosts", JSON.stringify(next)).catch(
               () => {},
             );
             return next;
           });
-        }
-      })
-      .catch((e) => {
-        console.error("Error toggling repost in background:", e);
-        setRepostedPosts((prev) => {
-          const next = { ...prev, [postId]: currentlyReposted };
-          AsyncStorage.setItem("repostedPosts", JSON.stringify(next)).catch(
-            () => {},
-          );
-          return next;
         });
-      });
 
-    return { reposted: nextReposted };
-  };
+      return { reposted: nextReposted };
+    },
+    [repostedPosts],
+  );
 
-  const setSession = async ({
-    user: nextUser,
-    token: nextToken,
-    privateKey: nextPrivateKey,
-    publicKey: nextPublicKey,
-    feedKey: nextFeedKey,
-  }) => {
-    setUser(nextUser ?? null);
-    setToken(nextToken ?? null);
-    setPrivateKey(nextPrivateKey ?? null);
-    setPublicKey(nextPublicKey ?? null);
-    setFeedKey(nextFeedKey ?? null);
-  };
+  const updateUser = useCallback((nextUserOrUpdater) => {
+    setUser((prev) => {
+      const nextUser =
+        typeof nextUserOrUpdater === "function"
+          ? nextUserOrUpdater(prev)
+          : nextUserOrUpdater;
+
+      persistUser(nextUser ?? null).catch(() => {});
+      return nextUser ?? null;
+    });
+  }, []);
+
+  const setSession = useCallback(
+    async ({
+      user: nextUser,
+      token: nextToken,
+      privateKey: nextPrivateKey,
+      publicKey: nextPublicKey,
+      feedKey: nextFeedKey,
+    }) => {
+      const normalizedToken = nextToken ?? null;
+
+      await persistToken(normalizedToken).catch(() => {});
+      updateUser(nextUser ?? null);
+      setToken(normalizedToken);
+      setApiAuthToken(normalizedToken);
+      setPrivateKey(nextPrivateKey ?? null);
+      setPublicKey(nextPublicKey ?? null);
+      setFeedKey(nextFeedKey ?? null);
+    },
+    [updateUser],
+  );
 
   const logout = async () => {
     await Promise.all([
@@ -366,6 +455,7 @@ export function UserProvider({ children }) {
 
     setUser(null);
     setToken(null);
+    clearApiAuthToken();
     setPrivateKey(null);
     setPublicKey(null);
     setFeedKey(null);
@@ -388,6 +478,7 @@ export function UserProvider({ children }) {
       feedKey,
       hydrate,
       setSession,
+      updateUser,
       logout,
       feedKeysCache,
       cacheFeedKey,
@@ -411,14 +502,19 @@ export function UserProvider({ children }) {
       privateKey,
       publicKey,
       feedKey,
+      setSession,
       feedKeysCache,
       cacheFeedKey,
+      updateUser,
       updateFollowingStatus,
       followingStatus,
       activities,
       likedPosts,
       dislikedPosts,
       repostedPosts,
+      toggleLike,
+      toggleDislike,
+      toggleRepost,
     ],
   );
 

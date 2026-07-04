@@ -3,6 +3,7 @@ import { Text, View } from "react-native";
 import {
   Clock,
   Key,
+  Lock,
   ShieldCheck,
   UserMinus,
   UserPlus,
@@ -38,7 +39,7 @@ const getActivityIcon = (type) => {
     case "post_created":
       return { Icon: ShieldCheck, color: "#8B5CF6", bg: "bg-violet-500/10" };
     default:
-      return { Icon: Clock, color: "#71717A", bg: "bg-white/10" };
+      return { Icon: Lock, color: "#71717A", bg: "bg-white/10" };
   }
 };
 

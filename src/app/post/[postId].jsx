@@ -3,7 +3,6 @@ import { ArrowLeft } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import PostCard from "../../components/PostCard";
 import ThreadBottomSheet from "../../components/ThreadBottomSheet";
 import { useUser } from "../../context/UserContext";
 import api from "../../utils/api";
@@ -167,7 +166,6 @@ export default function SharedPostScreen() {
         </View>
       ) : post ? (
         <View className="flex-1 px-4">
-          <PostCard post={post} onCommentPress={() => setThreadVisible(true)} />
           <ThreadBottomSheet
             visible={threadVisible}
             post={post}

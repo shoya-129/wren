@@ -2,6 +2,7 @@ import React, { useState, useCallback } from "react";
 import { useFocusEffect } from "expo-router";
 import { View, FlatList, ActivityIndicator, Alert } from "react-native";
 import PostCard from "./PostCard";
+import PostOptionsSheet from "./PostOptionsSheet";
 import ThreadBottomSheet from "./ThreadBottomSheet";
 import api from "../utils/api";
 import { decryptData, decryptAsymmetric } from "../utils/encryption";
@@ -41,6 +42,7 @@ const Feed = ({ onThreadVisibilityChange }) => {
   const [loading, setLoading] = useState(true);
   const [selectedPost, setSelectedPost] = useState(null);
   const [isSheetVisible, setIsSheetVisible] = useState(false);
+  const [optionsPost, setOptionsPost] = useState(null);
 
   // Pull user and crypto context
   const {
@@ -187,13 +189,17 @@ const Feed = ({ onThreadVisibilityChange }) => {
   );
 
   const renderItem = ({ item }) => (
-    <PostCard post={item} onCommentPress={() => openThread(item)} />
+    <PostCard
+      post={item}
+      onCommentPress={() => openThread(item)}
+      onMorePress={setOptionsPost}
+    />
   );
 
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center">
-        <ActivityIndicator size="large" color="white" />
+        <ActivityIndicator size="large" color="#4F7DFF" />
       </View>
     );
   }
@@ -222,6 +228,11 @@ const Feed = ({ onThreadVisibilityChange }) => {
           onSheetVisibilityChange={handleSheetVisibilityChange}
         />
       )}
+      <PostOptionsSheet
+        visible={!!optionsPost}
+        post={optionsPost}
+        onClose={() => setOptionsPost(null)}
+      />
     </View>
   );
 };

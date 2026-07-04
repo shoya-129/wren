@@ -1,5 +1,4 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import axios from "axios";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { ArrowLeft, Lock, User } from "lucide-react-native";
@@ -17,6 +16,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import FloatingLabelInput from "../../components/FloatingLabelInput";
 import { useUser } from "../../context/UserContext";
+import api, { setApiAuthToken } from "../../utils/api";
 import {
   decryptAsymmetric,
   decryptData,
@@ -39,15 +39,20 @@ export default function Login() {
 
     try {
       setIsLoading(true);
-      const res = await axios.post(
-        "https://wren-server.vercel.app/auth/login",
+      const res = await api.post(
+        "/auth/login",
         {
           identifier,
           password,
         },
+        { skipAuth: true },
       );
 
       const { user, accessToken } = res.data;
+
+      if (!accessToken) {
+        throw new Error("Missing token in login response");
+      }
 
       const { masterKey } = await deriveMasterKey(password, user.salt);
       const privateKey = await decryptData(user.encryptedPrivateKey, masterKey);
@@ -56,6 +61,8 @@ export default function Login() {
         user.publicKey,
         privateKey,
       );
+
+      setApiAuthToken(accessToken);
 
       await SecureStore.setItemAsync("privateKey", privateKey);
       await SecureStore.setItemAsync("feedKey", feedKey);
@@ -73,10 +80,12 @@ export default function Login() {
       });
 
       router.replace("/(tabs)");
-    } catch (_e) {
+    } catch (e) {
+      console.error("Login failed", e);
       Alert.alert(
         "Login Failed",
-        "Please check your credentials and try again.",
+        e?.response?.data?.message ||
+          "Please check your credentials and try again.",
       );
     } finally {
       setIsLoading(false);

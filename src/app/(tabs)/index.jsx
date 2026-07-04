@@ -56,7 +56,7 @@ export default function HomeScreen() {
     const contentToPost = postContent.trim();
     const mediaToPost = imageBase64;
 
-    // Optimistic success cleanup (close sheet and clear input instantly)
+    // Optimistic success cleanup
     setPostContent("");
     setImageBase64(null);
     bottomSheetRef.current?.close();

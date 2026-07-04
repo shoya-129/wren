@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import axios from "axios";
+
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { ArrowLeft, Check, Lock, Mail, User } from "lucide-react-native";
@@ -7,18 +7,22 @@ import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   Text,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import FloatingLabelInput from "../../components/FloatingLabelInput";
 import PasswordStrengthBar from "../../components/PasswordStrengthBar";
+import SecuritySheet from "../../components/SecuritySheet";
 import { useUser } from "../../context/UserContext";
 import { usePasswordStrength } from "../../hooks/usePasswordStrength";
+import api, { setApiAuthToken } from "../../utils/api";
 import {
   createMasterKey,
   encryptAsymmetric,
@@ -58,6 +62,7 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const SecuritySheetRef = useRef(null);
 
   const strength = usePasswordStrength(password);
 
@@ -85,21 +90,27 @@ export default function Signup() {
       const encryptedPrivateKey = await encryptData(privateKey, masterKey);
       const encryptedFeedKey = await encryptAsymmetric(feedKey, publicKey);
 
-      const res = await axios.post("https://wren-server.vercel.app/auth/register", {
-        username,
-        email,
-        password,
-        encryptedPrivateKey,
-        encryptedFeedKey,
-        salt,
-        publicKey,
-      });
+      const res = await api.post(
+        "/auth/register",
+        {
+          username,
+          email,
+          password,
+          encryptedPrivateKey,
+          encryptedFeedKey,
+          salt,
+          publicKey,
+        },
+        { skipAuth: true },
+      );
 
       const { user, accessToken } = res.data;
 
       if (!accessToken) {
         throw new Error("Missing token in register response");
       }
+
+      setApiAuthToken(accessToken);
 
       await AsyncStorage.setItem("user", JSON.stringify(user));
       await AsyncStorage.setItem("token", accessToken);
@@ -115,157 +126,179 @@ export default function Signup() {
         publicKey,
         feedKey,
       });
-
       router.replace("/(tabs)");
     } catch (e) {
-      Alert.alert("Sign up Failed", "Please try again in a moment.");
+      closeSheet();
+      console.error("Signup failed", e);
+      Alert.alert(
+        "Sign up Failed",
+        e?.response?.data?.message || "Please try again in a moment.",
+      );
     } finally {
+      closeSheet();
       setIsLoading(false);
     }
   };
 
+  const openSheet = () => {
+    SecuritySheetRef.current.snapToIndex(1);
+  };
+
+  const closeSheet = () => {
+    SecuritySheetRef.current.snapToIndex(-1);
+  };
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "padding"}
-      className="flex-1 bg-black"
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
-    >
-      <SafeAreaView className="flex-1">
-        <ScrollView
-          ref={scrollViewRef}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{
-            flexGrow: 1,
-            paddingHorizontal: 24,
-            paddingTop: 24,
-            paddingBottom: 40,
-          }}
-        >
-          <View style={{ flexGrow: 1, justifyContent: "space-between" }}>
-            <Pressable
-              onPress={() => router.back()}
-              className="w-10 h-10 items-center justify-center rounded-full bg-zinc-900 border border-zinc-800 self-start active:opacity-75"
-            >
-              <ArrowLeft size={20} color="#FFFFFF" />
-            </Pressable>
-
-            <View className="my-auto py-6">
-              <View className="mb-8">
-                <Text
-                  style={{ fontFamily: "WrenBold" }}
-                  className="text-white text-3xl mb-2"
-                >
-                  Create Account
-                </Text>
-                <Text
-                  style={{ fontFamily: "WrenMedium" }}
-                  className="text-zinc-400 text-base"
-                >
-                  Join us to start your secure social experience
-                </Text>
-              </View>
-
-              <View className="mb-4">
-                <FloatingLabelInput
-                  label="Username"
-                  value={username}
-                  onChangeText={setUsername}
-                  leadingIcon={User}
-                  autoCapitalize="none"
-                />
-
-                <FloatingLabelInput
-                  label="Email Address"
-                  value={email}
-                  onChangeText={setEmail}
-                  leadingIcon={Mail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
-
-                <FloatingLabelInput
-                  label="Password"
-                  value={password}
-                  onChangeText={setPassword}
-                  leadingIcon={Lock}
-                  secureTextEntry={true}
-                  onFocus={() => {
-                    setTimeout(() => {
-                      scrollViewRef.current?.scrollToEnd({ animated: true });
-                    }, 250);
-                  }}
-                />
-              </View>
-
-              {/* Password Strength Section */}
-              {password.length > 0 && (
-                <View className="mb-6 px-1">
-                  <View className="flex-row justify-between items-center mb-1">
-                    <Text className="text-zinc-500 text-sm">
-                      Password Strength
-                    </Text>
-                    <Text
-                      style={{ color: strength.color }}
-                      className="text-sm"
-                    >
-                      {strength.label}
-                    </Text>
-                  </View>
-
-                  <PasswordStrengthBar
-                    score={strength.score}
-                    color={strength.color}
-                  />
-
-                  <View className="flex-row gap-4 mt-2">
-                    <RequirementItem
-                      label="At least 8 characters"
-                      fulfilled={strength.checks.length8}
-                    />
-                    <RequirementItem
-                      label="At least 1 special character"
-                      fulfilled={strength.checks.symbol}
-                    />
-                  </View>
-                </View>
-              )}
-
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        className="flex-1 bg-black"
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
+      >
+        <SafeAreaView className="flex-1">
+          <ScrollView
+            ref={scrollViewRef}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{
+              flexGrow: 1,
+              paddingHorizontal: 24,
+              paddingTop: 24,
+              paddingBottom: 40,
+            }}
+          >
+            <View style={{ flexGrow: 1, justifyContent: "space-between" }}>
               <Pressable
-                onPress={handleSignup}
-                disabled={isLoading}
-                className={`h-12 rounded-full bg-primary items-center justify-center shadow-lg shadow-primary/20 ${
-                  isLoading ? "opacity-70" : "active:opacity-90"
-                }`}
+                onPress={() => router.back()}
+                className="w-10 h-10 items-center justify-center rounded-full bg-zinc-900 border border-zinc-800 self-start active:opacity-75"
               >
-                {isLoading ? <ActivityIndicator color="#FFFFFF" /> : (
-                  <Text
-                    style={{ fontFamily: "WrenSemiBold" }}
-                    className="text-white text-lg"
-                  >
-                    Sign up
-                  </Text>
-                )}
+                <ArrowLeft size={20} color="#FFFFFF" />
               </Pressable>
 
-              {/* Footer Navigation */}
-              <View className="flex-row justify-center items-center mt-6">
-                <Text className="text-zinc-500 text-sm">
-                  Already have an account?{" "}
-                </Text>
-                <Pressable
-                  onPress={() => router.push("/login")}
-                  className="p-1"
-                >
-                  <Text className="text-primary text-sm">
-                    Log In
+              <View className="my-auto py-6">
+                <View className="mb-8">
+                  <Text
+                    style={{ fontFamily: "WrenBold" }}
+                    className="text-white text-3xl mb-2"
+                  >
+                    Create Account
                   </Text>
+                  <Text
+                    style={{ fontFamily: "WrenMedium" }}
+                    className="text-zinc-400 text-base"
+                  >
+                    Join us to start your secure social experience
+                  </Text>
+                </View>
+
+                <View className="mb-4">
+                  <FloatingLabelInput
+                    label="Username"
+                    value={username}
+                    onChangeText={setUsername}
+                    leadingIcon={User}
+                    autoCapitalize="none"
+                  />
+
+                  <FloatingLabelInput
+                    label="Email Address"
+                    value={email}
+                    onChangeText={setEmail}
+                    leadingIcon={Mail}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                  />
+
+                  <FloatingLabelInput
+                    label="Password"
+                    value={password}
+                    onChangeText={setPassword}
+                    leadingIcon={Lock}
+                    secureTextEntry={true}
+                    onFocus={() => {
+                      setTimeout(() => {
+                        scrollViewRef.current?.scrollToEnd({ animated: true });
+                      }, 250);
+                    }}
+                  />
+                </View>
+
+                {/* Password Strength Section */}
+                {password.length > 0 && (
+                  <View className="mb-6 px-1">
+                    <View className="flex-row justify-between items-center mb-1">
+                      <Text className="text-zinc-500 text-sm">
+                        Password Strength
+                      </Text>
+                      <Text
+                        style={{ color: strength.color }}
+                        className="text-sm"
+                      >
+                        {strength.label}
+                      </Text>
+                    </View>
+
+                    <PasswordStrengthBar
+                      score={strength.score}
+                      color={strength.color}
+                    />
+
+                    <View className="flex-row gap-4 mt-2">
+                      <RequirementItem
+                        label="At least 8 characters"
+                        fulfilled={strength.checks.length8}
+                      />
+                      <RequirementItem
+                        label="At least 1 special character"
+                        fulfilled={strength.checks.symbol}
+                      />
+                    </View>
+                  </View>
+                )}
+
+                <Pressable
+                  onPress={() => {
+                    openSheet();
+                    Keyboard.dismiss();
+                  }}
+                  disabled={isLoading}
+                  className={`h-12 rounded-full bg-primary items-center justify-center shadow-lg shadow-primary/20 ${
+                    isLoading ? "opacity-70" : "active:opacity-90"
+                  }`}
+                >
+                  {isLoading ? <ActivityIndicator color="#FFFFFF" /> : (
+                    <Text
+                      style={{ fontFamily: "WrenSemiBold" }}
+                      className="text-white text-lg"
+                    >
+                      Sign up
+                    </Text>
+                  )}
                 </Pressable>
+
+                {/* Footer Navigation */}
+                <View className="flex-row justify-center items-center mt-6">
+                  <Text className="text-zinc-500 text-sm">
+                    Already have an account?{" "}
+                  </Text>
+                  <Pressable
+                    onPress={() => router.push("/login")}
+                    className="p-1"
+                  >
+                    <Text className="text-primary text-sm">Log In</Text>
+                  </Pressable>
+                </View>
               </View>
             </View>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    </KeyboardAvoidingView>
+          </ScrollView>
+
+          <SecuritySheet
+            ref={SecuritySheetRef}
+            onContinue={handleSignup}
+            isLoading={isLoading}
+          />
+        </SafeAreaView>
+      </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 }

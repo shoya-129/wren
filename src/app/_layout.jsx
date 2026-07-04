@@ -1,7 +1,9 @@
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { ActivityIndicator, LogBox, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+// import { KeyboardProvider } from "react-native-keyboard-controller";
 import {
   configureReanimatedLogger,
   ReanimatedLogLevel,
@@ -14,9 +16,7 @@ configureReanimatedLogger({
   strict: false,
 });
 
-LogBox.ignoreLogs([
-  "Writing to `value` during component render",
-]);
+LogBox.ignoreLogs(["Writing to `value` during component render"]);
 
 function RootNavigator() {
   const { isHydrating, isLoggedIn } = useUser();
@@ -37,6 +37,7 @@ function RootNavigator() {
     >
       <Stack.Protected guard={isLoggedIn}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="profile/[username]" />
       </Stack.Protected>
 
       <Stack.Protected guard={!isLoggedIn}>
@@ -63,7 +64,11 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <UserProvider>
-        <RootNavigator />
+        {/* <KeyboardProvider> */}
+        <BottomSheetModalProvider>
+          <RootNavigator />
+        </BottomSheetModalProvider>
+        {/* </KeyboardProvider> */}
       </UserProvider>
     </GestureHandlerRootView>
   );

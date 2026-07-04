@@ -1,5 +1,5 @@
 import { Search, User, UserCheck, UserPlus } from "lucide-react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,8 +16,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "../../context/UserContext";
 import api from "../../utils/api";
 import { getEntityUid } from "../../utils/followStatus";
+import { getPaginatedData } from "../../utils/users";
 
 export default function SearchScreen() {
+  const router = useRouter();
   const {
     user: currentUser,
     followingStatus,
@@ -56,11 +58,11 @@ export default function SearchScreen() {
       if (showLoading) setIsLoading(true);
       try {
         const [usersRes] = await Promise.all([
-          api.get("/user/all"),
+          api.get("/user/all", { params: { page: 1, limit: 50 } }),
           syncAcceptedFollowsFromFeed(),
         ]);
 
-        const normalizedUsers = (usersRes.data || [])
+        const normalizedUsers = getPaginatedData(usersRes.data)
           .map((u) => ({ ...u, uid: getEntityUid(u) }))
           .filter((u) => !!u.uid);
         const filtered = normalizedUsers.filter(
@@ -180,7 +182,15 @@ export default function SearchScreen() {
     return (
       <View className="flex-row items-center justify-between border-b border-white/20 py-4">
         {/* User Info */}
-        <View className="flex-row items-center gap-3 flex-1 mr-4">
+        <Pressable
+          onPress={() =>
+            router.push({
+              pathname: "/profile/[username]",
+              params: { username: item.username, uid: item.uid },
+            })
+          }
+          className="flex-row items-center gap-3 flex-1 mr-4"
+        >
           <View className="w-12 h-12 rounded-full bg-white/10 border border-white/20 items-center justify-center">
             {item.avatar ? (
               <Image
@@ -202,7 +212,7 @@ export default function SearchScreen() {
               @{item.username}
             </Text>
           </View>
-        </View>
+        </Pressable>
 
         {/* Action Button */}
         <Pressable

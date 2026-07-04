@@ -1,6 +1,9 @@
+import { useRouter } from "expo-router";
 import {
+  BadgeCheck,
   Lock,
   MessageCircle,
+  MoreVertical,
   Repeat2,
   Share2,
   ShieldCheck,
@@ -40,7 +43,31 @@ const formatDate = (dateString) => {
   return `${day} ${month}, ${year}`;
 };
 
-const PostCard = ({ post, onStatusChange, onCommentPress }) => {
+const getImageUri = (media) => {
+  if (!media || typeof media !== "string") return null;
+  const trimmed = media.trim();
+  if (!trimmed) return null;
+  if (
+    trimmed.startsWith("data:image/") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("file://")
+  ) {
+    return trimmed;
+  }
+  return `data:image/jpeg;base64,${trimmed}`;
+};
+
+const PostCard = ({
+  post,
+  onStatusChange,
+  onCommentPress,
+  allowDelete = false,
+
+  showMoreActions = true,
+  onMorePress,
+}) => {
+  const router = useRouter();
   const {
     user: currentUser,
     followingStatus,
@@ -56,6 +83,7 @@ const PostCard = ({ post, onStatusChange, onCommentPress }) => {
 
   const [loadingAction, setLoadingAction] = useState(false);
   const formatted = formatDate(post.createdAt);
+  const imageUri = getImageUri(post.media);
 
   const isLiked = !!likedPosts[post.postId];
   const isDisliked = !!dislikedPosts[post.postId];
@@ -65,8 +93,11 @@ const PostCard = ({ post, onStatusChange, onCommentPress }) => {
   const [repostsCount, setRepostsCount] = useState(post.repostsCount || 0);
 
   useEffect(() => {
-    setLikesCount(post.likesCount || 0);
-    setRepostsCount(post.repostsCount || 0);
+    const start = async () => {
+      setLikesCount(post.likesCount || 0);
+      setRepostsCount(post.repostsCount || 0);
+    };
+    start();
   }, [post.postId, post.likesCount, post.repostsCount]);
 
   const handleLike = () => {
@@ -89,8 +120,8 @@ const PostCard = ({ post, onStatusChange, onCommentPress }) => {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Check this encrypted post on wren`,
-        url: `wren://post/${post.postId}`,
+        message:
+          `Check this encrypted post on wren: https://wren.encrypt/post/${post.postId}`,
       });
     } catch (error) {
       console.error("Error sharing post:", error);
@@ -100,6 +131,8 @@ const PostCard = ({ post, onStatusChange, onCommentPress }) => {
   const author = post.author || {};
   const authorId = getEntityUid(post);
   const isOwnPost = authorId === currentUser?.uid;
+  const canShowMoreMenu = showMoreActions && !!onMorePress &&
+    (!isOwnPost || allowDelete);
   const status = getFollowStatus(
     post,
     followingStatus[authorId] || "none",
@@ -107,6 +140,23 @@ const PostCard = ({ post, onStatusChange, onCommentPress }) => {
   );
   const isPending = status === "pending";
   const isAccepted = status === "accepted";
+
+  const handleOpenProfile = () => {
+    if (!authorId) return;
+
+    if (isOwnPost) {
+      router.push("/(tabs)/profile");
+      return;
+    }
+
+    router.push({
+      pathname: "/profile/[username]",
+      params: {
+        username: author.username || authorId,
+        uid: authorId,
+      },
+    });
+  };
 
   const handleFollowToggle = async () => {
     if (isOwnPost || loadingAction) return;
@@ -171,7 +221,10 @@ const PostCard = ({ post, onStatusChange, onCommentPress }) => {
     <View className="w-full border-b border-white/10 py-4">
       {/* Header */}
       <View className="h-10 flex-row items-center gap-2 justify-between">
-        <View className="h-full flex-row items-center gap-2 flex-1">
+        <Pressable
+          onPress={handleOpenProfile}
+          className="h-full flex-row items-center gap-2 flex-1"
+        >
           {author.avatar
             ? (
               <Image
@@ -187,17 +240,22 @@ const PostCard = ({ post, onStatusChange, onCommentPress }) => {
             )}
 
           <View className="flex-1 mr-2">
-            <Text
-              className="text-base font-semibold text-white"
-              numberOfLines={1}
-            >
-              {author.name || author.username || "Wren User"}
-            </Text>
+            <View className="items-center flex-row gap-1">
+              <Text
+                className="text-base font-semibold text-white"
+                numberOfLines={1}
+              >
+                {author.name || author.username || "Wren User"}
+              </Text>
+              {author.verified && (
+                <BadgeCheck size={16} color="#4F7DFF" strokeWidth={2} />
+              )}
+            </View>
             <Text className="text-xs text-white/60" numberOfLines={1}>
               @{author.username || "anonymous"}
             </Text>
           </View>
-        </View>
+        </Pressable>
 
         {/* Follow / Relationship Button */}
         {!isOwnPost && !isAccepted && (
@@ -226,6 +284,17 @@ const PostCard = ({ post, onStatusChange, onCommentPress }) => {
               )}
           </Pressable>
         )}
+
+        {canShowMoreMenu
+          ? (
+            <Pressable
+              onPress={() => onMorePress?.(post)}
+              className="w-9 h-9 rounded-full items-center justify-center mr-2"
+            >
+              <MoreVertical size={18} color="#FFFFFF" strokeWidth={2.2} />
+            </Pressable>
+          )
+          : null}
       </View>
 
       {/* Content */}
@@ -236,10 +305,10 @@ const PostCard = ({ post, onStatusChange, onCommentPress }) => {
               <Text className="text-[16px] leading-relaxed text-white/80">
                 {post.content}
               </Text>
-              {post.media && (
+              {imageUri && (
                 <View className="mt-3 rounded-2xl overflow-hidden bg-white/5 border border-white/10 max-h-60">
                   <Image
-                    source={{ uri: `data:image/jpeg;base64,${post.media}` }}
+                    source={{ uri: imageUri }}
                     className="w-full h-48"
                     resizeMode="cover"
                   />
@@ -248,7 +317,7 @@ const PostCard = ({ post, onStatusChange, onCommentPress }) => {
             </View>
           )
           : (
-            <Pressable  className="bg-white/5 border border-white/10 rounded-2xl p-4 flex-row items-center gap-3">
+            <Pressable className="bg-white/5 border border-white/10 rounded-2xl p-4 flex-row items-center gap-3">
               <View className="w-10 h-10 rounded-full bg-white/10 border border-white/20 items-center justify-center">
                 <Lock
                   size={16}
@@ -273,7 +342,7 @@ const PostCard = ({ post, onStatusChange, onCommentPress }) => {
       {/* Footer */}
       <View className="mt-3">
         <Text className="text-white/50 text-sm">
-          {formatted ? `Written on ${formatted}` : ""}
+          {formatted ? `Wrencrypted on ${formatted}` : ""}
         </Text>
 
         <View className="mt-2 flex-row items-center justify-between">
@@ -371,7 +440,6 @@ const PostCard = ({ post, onStatusChange, onCommentPress }) => {
           </View>
         </View>
       </View>
-
     </View>
   );
 };

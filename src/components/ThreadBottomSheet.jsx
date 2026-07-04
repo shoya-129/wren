@@ -1,3 +1,9 @@
+import BottomSheet, {
+  BottomSheetFlatList,
+  BottomSheetTextInput,
+  BottomSheetView,
+} from "@gorhom/bottom-sheet";
+import { ArrowLeft, ImageIcon, Send, X } from "lucide-react-native";
 import React, {
   useCallback,
   useEffect,
@@ -6,29 +12,24 @@ import React, {
   useState,
 } from "react";
 import {
-  View,
-  Text,
-  Pressable,
   ActivityIndicator,
+  Image,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
+  Pressable,
+  Text,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import BottomSheet, {
-  BottomSheetView,
-  BottomSheetFlatList,
-  BottomSheetTextInput,
-} from "@gorhom/bottom-sheet";
-import { ArrowLeft, X, Send } from "lucide-react-native";
-import PostCard from "./PostCard";
+import { useUser } from "../context/UserContext";
 import api from "../utils/api";
 import {
   decryptAsymmetric,
   decryptData,
   encryptData,
 } from "../utils/encryption";
-import { useUser } from "../context/UserContext";
+import { pickImageBase64 } from "../utils/media";
+import PostCard from "./PostCard";
+import PostOptionsSheet from "./PostOptionsSheet";
 
 const ThreadBottomSheet = ({
   visible,
@@ -36,9 +37,11 @@ const ThreadBottomSheet = ({
   onClose,
   onAddReply,
   onSheetVisibilityChange,
+  allowDelete = false,
+  onDeleted,
 }) => {
   const sheetRef = useRef(null);
-  const snapPoints = useMemo(() => ["85%"], []);
+  const snapPoints = useMemo(() => ["90%"], []);
   const loadedRepliesRef = useRef(new Set());
   const repliesCacheRef = useRef({});
   const insets = useSafeAreaInsets();
@@ -57,9 +60,9 @@ const ThreadBottomSheet = ({
   const [replies, setReplies] = useState(post.replies ?? []);
   const [loadingReplies, setLoadingReplies] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [canSubmit, setCanSubmit] = useState(false);
-  const replyTextRef = useRef("");
-  const replyInputRef = useRef(null);
+  const [replyText, setReplyText] = useState("");
+  const [imageBase64, setImageBase64] = useState(null);
+  const [optionsPost, setOptionsPost] = useState(null);
 
   const getPostId = useCallback(
     (item) => item?.postId ?? item?.replyId ?? item?.id,
@@ -68,6 +71,7 @@ const ThreadBottomSheet = ({
 
   const activePost = threadStack[threadStack.length - 1];
   const activePostId = getPostId(activePost);
+  const canSubmit = replyText.trim().length > 0 || !!imageBase64;
 
   const normalizeReplyBasics = useCallback(
     (items) => {
@@ -84,13 +88,22 @@ const ThreadBottomSheet = ({
     [getPostId],
   );
 
-  useEffect(() => {
-    setThreadStack([post]);
-    if (post?.postId) {
-      const cached = repliesCacheRef.current[post.postId];
-      const nextReplies = cached ?? post.replies ?? [];
-      setReplies(normalizeReplyBasics(nextReplies));
+  const handlePickImage = useCallback(async () => {
+    const base64 = await pickImageBase64();
+    if (base64) {
+      setImageBase64(base64);
     }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      setThreadStack([post]);
+      if (post?.postId) {
+        const cached = repliesCacheRef.current[post.postId];
+        const nextReplies = cached ?? post.replies ?? [];
+        setReplies(normalizeReplyBasics(nextReplies));
+      }
+    })();
   }, [post, normalizeReplyBasics]);
 
   const handleOpenThread = useCallback(
@@ -113,8 +126,13 @@ const ThreadBottomSheet = ({
         items.map(async (reply) => {
           const normalizedPostId = getPostId(reply);
           const authorId = reply.author?.uid ?? reply.uid;
-          let activeKey = null;
 
+          let activeKey = null;
+          let content = reply.content ?? "";
+          let media = reply.media ?? null;
+          let isDecrypted = !!reply.content;
+
+          // Key resolution
           if (authorId && authorId === user?.uid && feedKey) {
             activeKey = feedKey;
           } else if (authorId && feedKeysCache[authorId]) {
@@ -134,9 +152,33 @@ const ThreadBottomSheet = ({
             activeKey = parentPost.feedKey;
           }
 
-          let content = reply.content ?? "";
-          let isDecrypted = !!reply.content;
-          let media = reply.media ?? null;
+          // Decrypt Content
+          if (reply.encryptedContent && activeKey) {
+            try {
+              content = await decryptData(reply.encryptedContent, activeKey);
+              isDecrypted = true;
+            } catch (e) {
+              console.warn("Failed to decrypt reply content", e);
+            }
+          }
+
+          // Decrypt Media
+          if (reply.encryptedMedia && activeKey) {
+            try {
+              const rawMedia = await decryptData(
+                reply.encryptedMedia,
+                activeKey,
+              );
+
+              if (typeof rawMedia === "string") {
+                media = rawMedia.trim();
+              } else if (rawMedia && typeof rawMedia === "object") {
+                media = rawMedia.toString();
+              }
+            } catch (e) {
+              console.warn("Failed to decrypt reply media", e);
+            }
+          }
 
           const normalizedReply = {
             ...reply,
@@ -145,33 +187,13 @@ const ThreadBottomSheet = ({
             likesCount: reply.likesCount ?? 0,
             repostsCount: reply.repostsCount ?? 0,
             repliesCount: reply.repliesCount ?? 0,
-          };
-
-          if (reply.encryptedContent && activeKey) {
-            try {
-              content = await decryptData(reply.encryptedContent, activeKey);
-              isDecrypted = true;
-            } catch (e) {
-              console.warn("Failed to decrypt reply", e);
-              isDecrypted = false;
-            }
-          }
-
-          if (reply.encryptedMedia && activeKey) {
-            try {
-              media = await decryptData(reply.encryptedMedia, activeKey);
-            } catch (e) {
-              console.warn("Failed to decrypt reply media", e);
-            }
-          }
-
-          return {
-            ...normalizedReply,
             content,
             media,
             isDecrypted,
             feedKey: activeKey,
           };
+
+          return normalizedReply;
         }),
       );
     },
@@ -185,7 +207,6 @@ const ThreadBottomSheet = ({
       getPostId,
     ],
   );
-
   useEffect(() => {
     if (!activePostId) return;
 
@@ -234,9 +255,31 @@ const ThreadBottomSheet = ({
     if (sheetRef.current) sheetRef.current.close();
   }, [onClose]);
 
+  const handleDeletePost = useCallback(
+    (deletedPostId) => {
+      setOptionsPost(null);
+
+      if (deletedPostId === activePostId) {
+        onDeleted?.(deletedPostId);
+        handleClose();
+        return;
+      }
+
+      setReplies((prev) =>
+        prev.filter((item) => getPostId(item) !== deletedPostId),
+      );
+      repliesCacheRef.current[activePostId] = (
+        repliesCacheRef.current[activePostId] || []
+      ).filter((item) => getPostId(item) !== deletedPostId);
+      onDeleted?.(deletedPostId);
+    },
+    [activePostId, getPostId, handleClose, onDeleted],
+  );
+
   const handleSubmit = useCallback(async () => {
-    const plain = replyTextRef.current.trim();
-    if (!plain) return;
+    const plain = replyText.trim();
+    const mediaToPost = imageBase64;
+    if (!plain && !mediaToPost) return;
     if (!feedKey) {
       alert("Encryption key missing. Please login again.");
       return;
@@ -245,9 +288,14 @@ const ThreadBottomSheet = ({
 
     setSubmitting(true);
     try {
-      const encrypted = await encryptData(plain, feedKey);
+      const encrypted = plain ? await encryptData(plain, feedKey) : null;
+      let encryptedMedia = null;
+      if (mediaToPost) {
+        encryptedMedia = await encryptData(mediaToPost, feedKey);
+      }
       const res = await api.post(`/posts/${activePostId}/comment`, {
         encryptedContent: encrypted,
+        encryptedMedia,
       });
       const newReply = res.data;
       const hydratedReply = {
@@ -258,6 +306,7 @@ const ThreadBottomSheet = ({
         repostsCount: newReply.repostsCount ?? 0,
         repliesCount: newReply.repliesCount ?? 0,
         content: plain,
+        media: mediaToPost,
         isDecrypted: true,
         feedKey,
       };
@@ -277,9 +326,8 @@ const ThreadBottomSheet = ({
         activePost?.author?.username ?? "self",
         "You replied to a post",
       );
-      replyTextRef.current = "";
-      replyInputRef.current?.clear();
-      setCanSubmit(false);
+      setReplyText("");
+      setImageBase64(null);
     } catch (e) {
       console.error("Reply failed", e);
       alert("Failed to post reply.");
@@ -287,7 +335,9 @@ const ThreadBottomSheet = ({
       setSubmitting(false);
     }
   }, [
+    imageBase64,
     feedKey,
+    replyText,
     activePostId,
     activePost,
     onAddReply,
@@ -326,59 +376,99 @@ const ThreadBottomSheet = ({
             <X size={18} color="#FFFFFF" />
           </Pressable>
         </View>
-        {activePost && <PostCard post={activePost} />}
+        {activePost && (
+          <PostCard
+            post={activePost}
+            allowDelete={allowDelete}
+            onDeleted={handleDeletePost}
+            onMorePress={setOptionsPost}
+          />
+        )}
       </View>
     ),
     [activePost, handleBack, handleClose, threadStack.length],
   );
 
-  const handleReplyChange = useCallback(
-    (text) => {
-      replyTextRef.current = text;
-      const nextCanSubmit = !!text.trim();
-      if (nextCanSubmit !== canSubmit) setCanSubmit(nextCanSubmit);
-    },
-    [canSubmit],
-  );
+  const handleReplyChange = useCallback((text) => {
+    setReplyText(text);
+  }, []);
 
   const renderInput = useMemo(
     () => (
-      <View
-        className="bg-[#121212] px-3 pt-2 border-t border-white/10"
-        style={{ paddingBottom: Math.max(insets.bottom, 24) }}
-      >
-        <View className="flex-row items-center gap-2">
-          <View className="flex-1 bg-white/10 border border-white/10 rounded-full px-4 py-2">
+      <View className="px-4 pt-3 pb-8 bg-[#121212]">
+        <View className="rounded-[26px] bg-[#1B1B1B] border border-white/10 px-4 py-3">
+          {imageBase64 && (
+            <View className="mb-3 rounded-2xl overflow-hidden">
+              <Image
+                source={{ uri: `data:image/jpeg;base64,${imageBase64}` }}
+                className="w-full h-44"
+                resizeMode="cover"
+              />
+              <Pressable
+                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/70 items-center justify-center"
+                onPress={() => setImageBase64(null)}
+              >
+                <X size={16} color="#fff" />
+              </Pressable>
+            </View>
+          )}
+
+          <View className="flex-row items-end">
             <BottomSheetTextInput
-              ref={replyInputRef}
-              placeholder="Write a reply…"
-              placeholderTextColor="rgba(255,255,255,0.4)"
-              multiline
-              maxLength={200}
+              value={replyText}
               onChangeText={handleReplyChange}
+              placeholder="Write an encrypted reply..."
+              placeholderTextColor="rgba(255,255,255,.45)"
+              multiline
+              maxLength={280}
               style={{
-                color: "#FFF",
-                fontSize: 14,
-                lineHeight: 18,
-                fontFamily: "WrenRegular",
-                maxHeight: 90,
+                flex: 1,
+                color: "#fff",
+                fontSize: 16,
+                minHeight: 50,
+                maxHeight: 140,
+                paddingTop: 12,
+                paddingBottom: 12,
+                textAlignVertical: "top",
               }}
-              className="min-h-[36px]"
             />
+
+            <Pressable onPress={handlePickImage} className="ml-2 mb-1">
+              <ImageIcon size={22} color="#fff" />
+            </Pressable>
+
+            <Pressable
+              onPress={handleSubmit}
+              disabled={!canSubmit || submitting}
+              className={`ml-2 h-11 w-11 rounded-full items-center justify-center ${
+                canSubmit ? "bg-primary" : "bg-white/10"
+              }`}
+            >
+              {submitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Send size={18} color="#fff" />
+              )}
+            </Pressable>
           </View>
-          <Pressable
-            onPress={handleSubmit}
-            disabled={submitting || !canSubmit}
-            className={`h-9 w-10 items-center justify-center rounded-full ${
-              submitting || !canSubmit ? "bg-gray-600" : "bg-primary"
-            }`}
-          >
-            <Send size={16} color="#FFF" />
-          </Pressable>
+
+          <View className="flex-row justify-end mt-2">
+            <Text className="text-white/30 text-xs">
+              {replyText.length}/280
+            </Text>
+          </View>
         </View>
       </View>
     ),
-    [handleReplyChange, handleSubmit, submitting, insets.bottom, canSubmit],
+    [
+      replyText,
+      imageBase64,
+      canSubmit,
+      submitting,
+      handlePickImage,
+      handleReplyChange,
+      handleSubmit,
+    ],
   );
 
   return (
@@ -392,47 +482,55 @@ const ThreadBottomSheet = ({
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
+      enableBlurKeyboardOnGesture={true}
       onClose={handleClose}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
-      >
-        {loadingReplies ? (
-          <BottomSheetView className="flex-1 items-center justify-center">
-            <ActivityIndicator size="large" color="#FFFFFF" />
-          </BottomSheetView>
-        ) : (
-          <BottomSheetFlatList
-            data={replies}
-            keyExtractor={(item) =>
-              item.postId?.toString() ??
-              item.replyId?.toString() ??
-              item.id?.toString() ??
-              Math.random().toString()
-            }
-            renderItem={({ item }) => (
-              <PostCard
-                post={item}
-                onCommentPress={() => handleOpenThread(item)}
-              />
-            )}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            nestedScrollEnabled
-            ListHeaderComponent={renderHeader}
-            contentContainerStyle={{
-              paddingHorizontal: 12,
-              paddingTop: 8,
-              paddingBottom: 24,
-            }}
-            style={{ flex: 1 }}
-          />
-        )}
-        {renderInput}
-      </KeyboardAvoidingView>
+      {loadingReplies ? (
+        <BottomSheetView className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#FFFFFF" />
+        </BottomSheetView>
+      ) : (
+        <BottomSheetFlatList
+          data={replies}
+          keyExtractor={(item) =>
+            item.postId?.toString() ??
+            item.replyId?.toString() ??
+            item.id?.toString() ??
+            Math.random().toString()
+          }
+          renderItem={({ item }) => (
+            <PostCard
+              post={item}
+              onCommentPress={() => handleOpenThread(item)}
+              allowDelete={allowDelete}
+              onDeleted={handleDeletePost}
+              onMorePress={setOptionsPost}
+            />
+          )}
+          ListHeaderComponent={renderHeader}
+          ListFooterComponent={renderInput} // ← Important
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          nestedScrollEnabled
+          contentContainerStyle={{
+            paddingHorizontal: 12,
+            paddingTop: 8,
+            paddingBottom: insets.bottom + 180, // Extra space for keyboard + input
+          }}
+          style={{ flex: 1 }}
+        />
+      )}
+      <PostOptionsSheet
+        visible={!!optionsPost}
+        post={optionsPost}
+        canDelete={
+          allowDelete &&
+          (optionsPost?.author?.uid ?? optionsPost?.uid) === user?.uid
+        }
+        onClose={() => setOptionsPost(null)}
+        onDeleted={handleDeletePost}
+      />
     </BottomSheet>
   );
 };

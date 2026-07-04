@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { View, TextInput, Animated, Pressable, Text } from "react-native";
 import { Eye, EyeOff } from "lucide-react-native";
 
@@ -14,15 +14,15 @@ export default function FloatingLabelInput({
 }) {
   const [isFocused, setIsFocused] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-  const animatedValue = useRef(new Animated.Value(value ? 1 : 0)).current;
+  const [animatedValue] = useState(() => new Animated.Value(value ? 1 : 0));
 
   useEffect(() => {
     Animated.timing(animatedValue, {
-      toValue: (isFocused || value) ? 1 : 0,
+      toValue: isFocused || value ? 1 : 0,
       duration: 180,
       useNativeDriver: true,
     }).start();
-  }, [isFocused, value]);
+  }, [isFocused, value, animatedValue]);
 
   // Rough estimation of label width to compensate for scale-center alignment
   const labelWidth = label.length * 7;
@@ -54,7 +54,9 @@ export default function FloatingLabelInput({
   const borderClass = isFocused ? "border-primary" : "border-zinc-800";
 
   return (
-    <View className={`relative h-14 w-full border rounded-xl flex-row items-center px-4 mb-4 bg-zinc-900/40 ${borderClass}`}>
+    <View
+      className={`relative h-14 w-full border rounded-xl flex-row items-center px-4 mb-4 bg-zinc-900/40 ${borderClass}`}
+    >
       {LeadingIcon && (
         <View className="mr-3 justify-center items-center">
           <LeadingIcon size={20} color={isFocused ? "#4F7DFF" : "#6E6C68"} />
@@ -70,17 +72,10 @@ export default function FloatingLabelInput({
             backgroundColor: labelBgColor,
             paddingHorizontal: 4,
             zIndex: 10,
-            transform: [
-              { translateY },
-              { translateX },
-              { scale },
-            ],
+            transform: [{ translateY }, { translateX }, { scale }],
           }}
         >
-          <Text
-            style={{ color: labelColor }}
-            className="text-[15px]"
-          >
+          <Text style={{ color: labelColor }} className="text-[15px]">
             {label}
           </Text>
         </Animated.View>
