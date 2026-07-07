@@ -122,7 +122,7 @@ const PostCard = ({
     try {
       await Share.share({
         message:
-          `Check this encrypted post on wren: https://titanpl.vercel.app/post/${post.postId}`,
+          `Check this encrypted post on wren: https://wren-nu.vercel.app/post/${post.postId}`,
       });
     } catch (error) {
       console.error("Error sharing post:", error);
