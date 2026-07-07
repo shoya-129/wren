@@ -19,7 +19,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import FloatingLabelInput from "../../components/FloatingLabelInput";
 import PasswordStrengthBar from "../../components/PasswordStrengthBar";
-import SecuritySheet from "../../components/SecuritySheet";
 import { useUser } from "../../context/UserContext";
 import { usePasswordStrength } from "../../hooks/usePasswordStrength";
 import api, { setApiAuthToken } from "../../utils/api";
@@ -62,7 +61,6 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const SecuritySheetRef = useRef(null);
 
   const strength = usePasswordStrength(password);
 
@@ -128,25 +126,16 @@ export default function Signup() {
       });
       router.replace("/(tabs)");
     } catch (e) {
-      closeSheet();
       console.error("Signup failed", e);
       Alert.alert(
         "Sign up Failed",
         e?.response?.data?.message || "Please try again in a moment.",
       );
     } finally {
-      closeSheet();
       setIsLoading(false);
     }
   };
 
-  const openSheet = () => {
-    SecuritySheetRef.current.snapToIndex(1);
-  };
-
-  const closeSheet = () => {
-    SecuritySheetRef.current.snapToIndex(-1);
-  };
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -258,8 +247,8 @@ export default function Signup() {
 
                 <Pressable
                   onPress={() => {
-                    openSheet();
-                    Keyboard.dismiss();
+                    handleSignup()
+                    Keyboard.dismiss()
                   }}
                   disabled={isLoading}
                   className={`h-12 rounded-full bg-primary items-center justify-center shadow-lg shadow-primary/20 ${
@@ -291,12 +280,6 @@ export default function Signup() {
               </View>
             </View>
           </ScrollView>
-
-          <SecuritySheet
-            ref={SecuritySheetRef}
-            onContinue={handleSignup}
-            isLoading={isLoading}
-          />
         </SafeAreaView>
       </KeyboardAvoidingView>
     </TouchableWithoutFeedback>

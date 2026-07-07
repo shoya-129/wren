@@ -5,6 +5,7 @@ import {
   Bell,
   LogOut,
   ShieldCheck,
+  User,
   UserPlus,
   Users,
 } from "lucide-react-native";
@@ -21,6 +22,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "../context/UserContext";
 import api from "../utils/api";
+import { findProfile } from "../utils/cache";
 import { decryptAsymmetric, decryptData } from "../utils/encryption";
 import { getFollowStatus } from "../utils/followStatus";
 import { resolveUserId } from "../utils/users";
@@ -198,45 +200,48 @@ const ProfileView = ({
           profileRes = await api.get("/user/profile");
           statsRes = await fetchStatsSafely("/user/stats");
         } else {
-          const resolvedUid = await resolveUserId({
-            uid: targetUid,
-            username: targetUsername,
-          });
-
-          const candidates = [targetUsername, targetUid, resolvedUid]
-            .filter(Boolean)
-            .filter((value, index, array) => array.indexOf(value) === index);
-
-          let lastError = null;
-
-          for (const candidate of candidates) {
-            try {
-              const nextProfileRes = await api.get(
-                `/user/profile/${encodeURIComponent(candidate)}`,
-              );
-              const nextStatsRes = await fetchStatsSafely(
-                `/user/stats/${encodeURIComponent(candidate)}`,
-              );
-              profileRes = nextProfileRes;
-              statsRes = nextStatsRes;
-              lookupId = candidate;
-              lastError = null;
-              break;
-            } catch (e) {
-              lastError = e;
-              const status = e?.response?.status;
-              if (status === 404 || status === 500) {
-                console.warn(
-                  `Profile lookup failed for ${candidate} with ${status}, trying next identifier.`,
-                );
-                continue;
-              }
-              throw e;
-            }
-          }
-
+          profileRes = await findProfile(targetUsername);
           if (!profileRes) {
-            throw lastError || new Error("Profile not found");
+            const resolvedUid = await resolveUserId({
+              uid: targetUid,
+              username: targetUsername,
+            });
+
+            const candidates = [targetUsername, targetUid, resolvedUid]
+              .filter(Boolean)
+              .filter((value, index, array) => array.indexOf(value) === index);
+
+            let lastError = null;
+
+            for (const candidate of candidates) {
+              try {
+                const nextProfileRes = await api.get(
+                  `/user/profile/${encodeURIComponent(candidate)}`,
+                );
+                const nextStatsRes = await fetchStatsSafely(
+                  `/user/stats/${encodeURIComponent(candidate)}`,
+                );
+                profileRes = nextProfileRes;
+                statsRes = nextStatsRes;
+                lookupId = candidate;
+                lastError = null;
+                break;
+              } catch (e) {
+                lastError = e;
+                const status = e?.response?.status;
+                if (status === 404 || status === 500) {
+                  console.warn(
+                    `Profile lookup failed for ${candidate} with ${status}, trying next identifier.`,
+                  );
+                  continue;
+                }
+                throw e;
+              }
+            }
+
+            if (!profileRes) {
+              throw lastError || new Error("Profile not found");
+            }
           }
         }
 
@@ -438,7 +443,6 @@ const ProfileView = ({
     }
   };
 
-
   const handleConnectionsMutation = useCallback((event) => {
     if (event?.type !== "revoke") return;
 
@@ -514,7 +518,7 @@ const ProfileView = ({
                 className="w-full h-full"
               />
             )
-            : <ShieldCheck size={28} color="#4F7DFF" strokeWidth={2.2} />}
+            : <User size={28} color="#4F7DFF" strokeWidth={2.2} />}
         </View>
 
         <View className="flex-row items-center gap-1.5">
@@ -669,6 +673,7 @@ const ProfileView = ({
         renderItem={({ item }) => (
           <View className="px-5">
             <PostCard
+              currentProfileUid={item.author.uid}
               post={item}
               onCommentPress={() => openThread(item)}
               allowDelete={isOwnProfile}

@@ -1,18 +1,20 @@
-import React, { useState, useMemo, useRef } from "react";
-import { Alert, Image, Pressable, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import {
-  Plus,
-  X,
-  ShieldAlert,
-  Send,
-  Image as ImageIcon,
-} from "lucide-react-native";
 import BottomSheet, {
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import {
+  Image as ImageIcon,
+  Plus,
+  Send,
+  ShieldAlert,
+  ShieldCheck,
+  X,
+} from "lucide-react-native";
+import React, { useMemo, useRef, useState } from "react";
+import { Alert, Image, Pressable, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Feed from "../../components/Feed";
+import SecuritySheet from "../../components/SecuritySheet";
 import { useUser } from "../../context/UserContext";
 import api from "../../utils/api";
 import { encryptData } from "../../utils/encryption";
@@ -24,6 +26,7 @@ export default function HomeScreen() {
   const [imageBase64, setImageBase64] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const securitySheetref = useRef(null);
   const bottomSheetRef = useRef(null);
   const snapPoints = useMemo(() => ["85%"], []);
 
@@ -93,6 +96,14 @@ export default function HomeScreen() {
     })();
   };
 
+  const openSecuritySheet = () => {
+    securitySheetref.current?.expand();
+  };
+
+  const closeSecuritySheet = () => {
+    securitySheetref.current?.close();
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-black">
       <View className="flex-1">
@@ -105,18 +116,21 @@ export default function HomeScreen() {
             Wren
           </Text>
           <View className="flex-row items-center gap-2">
-            <View className="flex-row items-center gap-1.5 bg-white/5 px-3 py-1 rounded-full border border-white/10">
-              <ShieldAlert size={12} color="#10B981" />
+            <Pressable
+              onPress={() => openSecuritySheet()}
+              className="flex-row items-center gap-1.5 bg-white/5 px-3 py-1 rounded-full border border-white/10"
+            >
+              <ShieldCheck size={12} color="#22c55e" />
               <Text
                 style={{ fontFamily: "WrenMedium" }}
-                className="text-[11px] text-emerald-500 font-semibold"
+                className="text-[11px] text-green-500 font-semibold"
               >
                 Secured
               </Text>
-            </View>
+            </Pressable>
             <Pressable
               onPress={openCompose}
-              className="h-10 w-10 rounded-full items-center justify-center active:opacity-80"
+              className="h-10 px-4 rounded-full items-center justify-center active:opacity-80"
               style={{ backgroundColor: "#4F7DFF" }}
               accessibilityRole="button"
               accessibilityLabel="Create post"
@@ -243,6 +257,11 @@ export default function HomeScreen() {
           </BottomSheetView>
         </BottomSheet>
 
+        <SecuritySheet
+          ref={securitySheetref}
+          onContinue={closeSecuritySheet}
+          panDown={true}
+        />
       </View>
     </SafeAreaView>
   );

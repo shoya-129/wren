@@ -6,9 +6,9 @@ import {
   MoreVertical,
   Repeat2,
   Share2,
-  ShieldCheck,
   ThumbsDown,
   ThumbsUp,
+  User,
   UserCheck,
   UserPlus,
 } from "lucide-react-native";
@@ -66,6 +66,7 @@ const PostCard = ({
 
   showMoreActions = true,
   onMorePress,
+  currentProfileUid,
 }) => {
   const router = useRouter();
   const {
@@ -121,7 +122,7 @@ const PostCard = ({
     try {
       await Share.share({
         message:
-          `Check this encrypted post on wren: https://wren.encrypt/post/${post.postId}`,
+          `Check this encrypted post on wren: https://titanpl.vercel.app/post/${post.postId}`,
       });
     } catch (error) {
       console.error("Error sharing post:", error);
@@ -146,6 +147,11 @@ const PostCard = ({
 
     if (isOwnPost) {
       router.push("/(tabs)/profile");
+      return;
+    }
+
+    // Already viewing this profile
+    if (currentProfileUid === authorId) {
       return;
     }
 
@@ -235,7 +241,7 @@ const PostCard = ({
             )
             : (
               <View className="h-10 w-10 rounded-full bg-white/10 border border-white/20 items-center justify-center">
-                <ShieldCheck size={16} color="#4F7DFF" strokeWidth={2} />
+                <User size={28} color="#4F7DFF" strokeWidth={2.2} />
               </View>
             )}
 

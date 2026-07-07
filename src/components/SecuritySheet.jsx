@@ -82,7 +82,7 @@ const SecuritySheet = ({
 
   useEffect(() => {
     Animated.sequence([
-      Animated.delay(4000),
+      Animated.delay(1500),
       Animated.timing(orbitRotation, {
         toValue: 1,
         duration: 1600,
@@ -101,7 +101,7 @@ const SecuritySheet = ({
     <BottomSheet
       className="flex-1"
       ref={ref}
-      snapPoints={["65%"]}
+      snapPoints={["68%"]}
       index={index}
       enablePanDownToClose={panDown}
       backgroundStyle={{ backgroundColor: "#121212" }}
@@ -188,14 +188,14 @@ const SecuritySheet = ({
 
         <Text
           style={{ fontFamily: "WrenSemiBold" }}
-          className="text-white text-[28px] text-center mt-3 leading-9"
+          className="text-white text-[28px] text-center mt-4 leading-9"
         >
-          Your posts stay encrypted
+          Share with people, not platforms.
         </Text>
 
         <Text className="text-white/55 text-sm text-center mt-3 leading-5 px-2">
-          Content is encrypted locally on your device before reaching our
-          servers. Only authorized followers can decrypt it.
+          Your posts are encrypted on your device before they leave it. Only the
+          people you approve can read them—not even Wren.
         </Text>
 
         <Pressable
@@ -203,9 +203,7 @@ const SecuritySheet = ({
           disabled={isLoading}
           className="mt-12 rounded-full h-14 items-center justify-center flex-row bg-secondary"
         >
-          {isLoading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
+          {isLoading ? <ActivityIndicator color="#FFFFFF" /> : (
             <Text
               style={{ fontFamily: "WrenSemiBold" }}
               className="text-white text-lg"

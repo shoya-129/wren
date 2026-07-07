@@ -6,7 +6,6 @@ export default function PublicProfileScreen() {
 
   return (
     <ProfileView
-      isOwnProfile={false}
       targetUsername={typeof username === "string" ? username : null}
       targetUid={typeof uid === "string" ? uid : null}
     />

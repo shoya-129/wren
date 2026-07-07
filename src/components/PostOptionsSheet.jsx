@@ -175,7 +175,7 @@ const PostOptionsSheet = ({
                       Delete post
                     </Text>
                     <Text className="text-white/45 text-sm mt-1">
-                      Remove this post from your profile and secure feed.
+                      Remove this post from wren feed.
                     </Text>
                   </View>
                 </Pressable>
@@ -205,7 +205,7 @@ const PostOptionsSheet = ({
             <View className="rounded-2xl bg-white/5 border border-white/10 p-4 mb-4 flex-row gap-3">
               <ShieldAlert size={18} color="#F59E0B" strokeWidth={2.2} />
               <Text className="flex-1 text-white/50 text-sm leading-5">
-                Reports only send moderation metadata. Your encrypted content
+                Reports only send moderation metadata. Post content
                 stays encrypted.
               </Text>
             </View>
@@ -304,8 +304,8 @@ const PostOptionsSheet = ({
 
             <View className="rounded-2xl bg-red-500/8 border border-red-500/20 p-4 mb-5 flex-row gap-3">
               <AlertTriangle size={18} color="#EF4444" strokeWidth={2.2} />
-              <Text className="flex-1 text-white/55 text-sm leading-5">
-                This only appears on your own profile. Deleted posts are hidden
+              <Text className="flex-1 text-white/55 leading-5">
+                Deleted posts are hidden
                 and cannot be restored here.
               </Text>
             </View>

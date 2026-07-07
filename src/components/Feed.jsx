@@ -1,12 +1,13 @@
-import React, { useState, useCallback } from "react";
 import { useFocusEffect } from "expo-router";
-import { View, FlatList, ActivityIndicator, Alert } from "react-native";
+import React, { useCallback, useState } from "react";
+import { ActivityIndicator, Alert, FlatList, View } from "react-native";
+import { useUser } from "../context/UserContext";
+import api from "../utils/api";
+import { cacheProfiles } from "../utils/cache";
+import { decryptAsymmetric, decryptData } from "../utils/encryption";
 import PostCard from "./PostCard";
 import PostOptionsSheet from "./PostOptionsSheet";
 import ThreadBottomSheet from "./ThreadBottomSheet";
-import api from "../utils/api";
-import { decryptData, decryptAsymmetric } from "../utils/encryption";
-import { useUser } from "../context/UserContext";
 
 const isReplyRecord = (item) => {
   if (!item) return false;
@@ -30,10 +31,10 @@ const isReplyRecord = (item) => {
 const getPostEncryptedFeedKey = (post) => {
   return (
     post?.encryptedFeedKey ??
-    post?.follow?.encryptedFeedKey ??
-    post?.relationship?.encryptedFeedKey ??
-    post?.author?.encryptedFeedKey ??
-    null
+      post?.follow?.encryptedFeedKey ??
+      post?.relationship?.encryptedFeedKey ??
+      post?.author?.encryptedFeedKey ??
+      null
   );
 };
 
@@ -129,8 +130,10 @@ const Feed = ({ onThreadVisibilityChange }) => {
           };
         }),
       );
-
       setPosts(decrypted);
+      setLoading(false);
+
+      await cacheProfiles(decrypted).catch(console.error);
     } catch (e) {
       console.error("Failed to fetch feed", e);
       Alert.alert("Error", "Failed to load feed. Please try again later.");
@@ -170,8 +173,8 @@ const Feed = ({ onThreadVisibilityChange }) => {
         prev.map((p) =>
           p.postId === selectedPost.postId
             ? { ...p, replies: [newReply, ...(p.replies ?? [])] }
-            : p,
-        ),
+            : p
+        )
       );
     },
     [selectedPost],
@@ -209,8 +212,7 @@ const Feed = ({ onThreadVisibilityChange }) => {
       <FlatList
         data={posts}
         keyExtractor={(item) =>
-          item.postId?.toString() ?? Math.random().toString()
-        }
+          item.postId?.toString() ?? Math.random().toString()}
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{

@@ -1,10 +1,10 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import BottomSheet, {
   BottomSheetFlatList,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
-import { ShieldCheck, User, UserMinus, X } from "lucide-react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import { BadgeCheck, User, UserMinus, X } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -161,11 +161,9 @@ const UserConnectionsSheet = ({
         className="flex-1 flex-row items-center gap-3 mr-3"
       >
         <View className="w-11 h-11 rounded-full bg-white/10 border border-white/15 items-center justify-center overflow-hidden">
-          {item.avatar ? (
-            <Image source={{ uri: item.avatar }} className="w-full h-full" />
-          ) : (
-            <User size={18} color="#4F7DFF" strokeWidth={2} />
-          )}
+          {item.avatar
+            ? <Image source={{ uri: item.avatar }} className="w-full h-full" />
+            : <User size={18} color="#4F7DFF" strokeWidth={2} />}
         </View>
         <View className="flex-1">
           <View className="flex-row items-center gap-1.5">
@@ -175,9 +173,9 @@ const UserConnectionsSheet = ({
             >
               {item.name || item.username}
             </Text>
-            {item.verified ? (
-              <ShieldCheck size={14} color="#4F7DFF" strokeWidth={2.2} />
-            ) : null}
+            {item.verified
+              ? <BadgeCheck size={18} color="#4F7DFF" strokeWidth={2.2} />
+              : null}
           </View>
           <Text className="text-white/50 text-sm" numberOfLines={1}>
             @{item.username}
@@ -185,22 +183,26 @@ const UserConnectionsSheet = ({
         </View>
       </Pressable>
 
-      {canManageFollowers && type === "followers" ? (
-        <Pressable
-          onPress={() => handleRevoke(item)}
-          disabled={revokingId === item.uid}
-          className="px-3 py-2 rounded-full bg-red-500/12 border border-red-500/25 min-w-[92px] items-center"
-        >
-          {revokingId === item.uid ? (
-            <ActivityIndicator size="small" color="#EF4444" />
-          ) : (
-            <View className="flex-row items-center gap-1.5">
-              <UserMinus size={14} color="#EF4444" strokeWidth={2.2} />
-              <Text className="text-red-400 text-xs font-semibold">Revoke</Text>
-            </View>
-          )}
-        </Pressable>
-      ) : null}
+      {canManageFollowers && type === "followers"
+        ? (
+          <Pressable
+            onPress={() => handleRevoke(item)}
+            disabled={revokingId === item.uid}
+            className="px-3 py-2 rounded-full bg-red-500/12 border border-red-500/25 min-w-[92px] items-center"
+          >
+            {revokingId === item.uid
+              ? <ActivityIndicator size="small" color="#EF4444" />
+              : (
+                <View className="flex-row items-center gap-1.5">
+                  <UserMinus size={14} color="#EF4444" strokeWidth={2.2} />
+                  <Text className="text-red-400 text-xs font-semibold">
+                    Revoke
+                  </Text>
+                </View>
+              )}
+          </Pressable>
+        )
+        : null}
     </View>
   );
 
@@ -245,28 +247,26 @@ const UserConnectionsSheet = ({
             </View>
           </View>
         }
-        ListEmptyComponent={
-          loading ? (
+        ListEmptyComponent={loading
+          ? (
             <BottomSheetView className="items-center justify-center py-16">
               <ActivityIndicator size="large" color="#4F7DFF" />
             </BottomSheetView>
-          ) : (
+          )
+          : (
             <BottomSheetView className="items-center justify-center py-16 px-8">
               <Text className="text-white/40 text-center">
                 No {title.toLowerCase()} found yet.
               </Text>
             </BottomSheetView>
-          )
-        }
-        ListFooterComponent={
-          loadingMore ? (
+          )}
+        ListFooterComponent={loadingMore
+          ? (
             <View className="py-5 items-center">
               <ActivityIndicator color="#4F7DFF" />
             </View>
-          ) : (
-            <View className="h-8" />
           )
-        }
+          : <View className="h-8" />}
         refreshing={refreshing}
         onRefresh={handleRefresh}
         showsVerticalScrollIndicator={false}
