@@ -1,12 +1,13 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowLeft } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import ThreadBottomSheet from "../../components/ThreadBottomSheet";
 import { useUser } from "../../context/UserContext";
+import colors from "../../lib/colors.json";
+import { ArrowLeftIcon as ArrowLeft } from "../../lib/icons";
 import api from "../../utils/api";
-import { decryptAsymmetric, decryptData } from "../../utils/encryption";
+import { decryptPostOrReply } from "../../utils/wrencryption";
 
 export default function SharedPostScreen() {
   const router = useRouter();
@@ -28,63 +29,22 @@ export default function SharedPostScreen() {
 
   const decryptPost = useCallback(
     async (rawPost) => {
-      const authorId = rawPost.author?.uid ?? rawPost.uid;
-      let postFeedKey = null;
-      let content = rawPost.content ?? "";
-      let media = rawPost.media ?? null;
-      let isDecrypted = false;
-
-      if (authorId && authorId === user?.uid && feedKey) {
-        postFeedKey = feedKey;
-      } else if (authorId && feedKeysCache[authorId]) {
-        postFeedKey = feedKeysCache[authorId];
-      } else if (rawPost.encryptedFeedKey && publicKey && privateKey) {
-        try {
-          postFeedKey = await decryptAsymmetric(
-            rawPost.encryptedFeedKey,
-            publicKey,
-            privateKey,
-          );
-          if (authorId) cacheFeedKey(authorId, postFeedKey);
-        } catch (e) {
-          console.warn("Failed to decrypt shared post feed key", e);
-        }
-      }
-
-      if (rawPost.encryptedContent && postFeedKey) {
-        try {
-          content = await decryptData(rawPost.encryptedContent, postFeedKey);
-          isDecrypted = true;
-        } catch (e) {
-          console.warn("Failed to decrypt shared post content", e);
-        }
-      } else if (rawPost.content) {
-        isDecrypted = true;
-      }
-
-      if (rawPost.encryptedMedia && postFeedKey) {
-        try {
-          media = await decryptData(rawPost.encryptedMedia, postFeedKey);
-        } catch (e) {
-          console.warn("Failed to decrypt shared post media", e);
-        }
-      }
-
-      return {
-        ...rawPost,
-        content,
-        media,
-        isDecrypted,
-        feedKey: postFeedKey,
-      };
+      return decryptPostOrReply(rawPost, {
+        currentUserUid: user?.uid,
+        feedKey,
+        feedKeysCache,
+        publicKey,
+        privateKey,
+        cacheFeedKey,
+      });
     },
     [
       user?.uid,
       feedKey,
       feedKeysCache,
-      cacheFeedKey,
       publicKey,
       privateKey,
+      cacheFeedKey,
     ],
   );
 
@@ -152,7 +112,7 @@ export default function SharedPostScreen() {
 
       {loading ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#4F7DFF" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : notFound ? (
         <View className="flex-1 items-center justify-center px-8">

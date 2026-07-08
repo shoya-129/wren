@@ -3,8 +3,7 @@ import BottomSheet, {
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
-import { ArrowLeft, ImageIcon, Send, X } from "lucide-react-native";
-import React, {
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -21,13 +20,15 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useUser } from "../context/UserContext";
+import colors from "../lib/colors.json";
+import { ArrowLeftIcon as ArrowLeft, ImageIconIcon as ImageIcon, SendIcon as Send, XIcon as X } from "../lib/icons";
 import api from "../utils/api";
 import {
-  decryptAsymmetric,
-  decryptData,
   encryptData,
 } from "../utils/encryption";
-import { pickImageBase64 } from "../utils/media";
+import { pickImageBase64, uploadEncryptedMedia } from "../utils/media";
+import { showToast } from "../utils/toast";
+import { decryptPostsOrReplies } from "../utils/wrencryption";
 import PostCard from "./PostCard";
 import PostOptionsSheet from "./PostOptionsSheet";
 
@@ -62,6 +63,7 @@ const ThreadBottomSheet = ({
   const [submitting, setSubmitting] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [imageBase64, setImageBase64] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const [optionsPost, setOptionsPost] = useState(null);
 
   const getPostId = useCallback(
@@ -71,7 +73,7 @@ const ThreadBottomSheet = ({
 
   const activePost = threadStack[threadStack.length - 1];
   const activePostId = getPostId(activePost);
-  const canSubmit = replyText.trim().length > 0 || !!imageBase64;
+  const canSubmit = (replyText.trim().length > 0 || !!imageBase64) && uploadProgress === null;
 
   const normalizeReplyBasics = useCallback(
     (items) => {
@@ -120,82 +122,15 @@ const ThreadBottomSheet = ({
 
   const decryptReplies = useCallback(
     async (items, parentPost) => {
-      if (!items?.length) return [];
-
-      return Promise.all(
-        items.map(async (reply) => {
-          const normalizedPostId = getPostId(reply);
-          const authorId = reply.author?.uid ?? reply.uid;
-
-          let activeKey = null;
-          let content = reply.content ?? "";
-          let media = reply.media ?? null;
-          let isDecrypted = !!reply.content;
-
-          // Key resolution
-          if (authorId && authorId === user?.uid && feedKey) {
-            activeKey = feedKey;
-          } else if (authorId && feedKeysCache[authorId]) {
-            activeKey = feedKeysCache[authorId];
-          } else if (reply.encryptedFeedKey && publicKey && privateKey) {
-            try {
-              activeKey = await decryptAsymmetric(
-                reply.encryptedFeedKey,
-                publicKey,
-                privateKey,
-              );
-              if (authorId) cacheFeedKey(authorId, activeKey);
-            } catch (e) {
-              console.warn("Failed to decrypt reply feed key", e);
-            }
-          } else if (parentPost?.feedKey) {
-            activeKey = parentPost.feedKey;
-          }
-
-          // Decrypt Content
-          if (reply.encryptedContent && activeKey) {
-            try {
-              content = await decryptData(reply.encryptedContent, activeKey);
-              isDecrypted = true;
-            } catch (e) {
-              console.warn("Failed to decrypt reply content", e);
-            }
-          }
-
-          // Decrypt Media
-          if (reply.encryptedMedia && activeKey) {
-            try {
-              const rawMedia = await decryptData(
-                reply.encryptedMedia,
-                activeKey,
-              );
-
-              if (typeof rawMedia === "string") {
-                media = rawMedia.trim();
-              } else if (rawMedia && typeof rawMedia === "object") {
-                media = rawMedia.toString();
-              }
-            } catch (e) {
-              console.warn("Failed to decrypt reply media", e);
-            }
-          }
-
-          const normalizedReply = {
-            ...reply,
-            postId: normalizedPostId,
-            uid: reply.uid ?? reply.author?.uid,
-            likesCount: reply.likesCount ?? 0,
-            repostsCount: reply.repostsCount ?? 0,
-            repliesCount: reply.repliesCount ?? 0,
-            content,
-            media,
-            isDecrypted,
-            feedKey: activeKey,
-          };
-
-          return normalizedReply;
-        }),
-      );
+      return decryptPostsOrReplies(items, {
+        currentUserUid: user?.uid,
+        feedKey,
+        feedKeysCache,
+        publicKey,
+        privateKey,
+        cacheFeedKey,
+        parentFeedKey: parentPost?.feedKey,
+      });
     },
     [
       user?.uid,
@@ -204,7 +139,6 @@ const ThreadBottomSheet = ({
       cacheFeedKey,
       publicKey,
       privateKey,
-      getPostId,
     ],
   );
   useEffect(() => {
@@ -281,18 +215,25 @@ const ThreadBottomSheet = ({
     const mediaToPost = imageBase64;
     if (!plain && !mediaToPost) return;
     if (!feedKey) {
-      alert("Encryption key missing. Please login again.");
+      showToast("Encryption key missing. Please login again.");
       return;
     }
     if (!activePostId) return;
 
     setSubmitting(true);
+    setUploadProgress(0);
     try {
       const encrypted = plain ? await encryptData(plain, feedKey) : null;
       let encryptedMedia = null;
+
       if (mediaToPost) {
-        encryptedMedia = await encryptData(mediaToPost, feedKey);
+        encryptedMedia = await uploadEncryptedMedia(
+          mediaToPost,
+          feedKey,
+          setUploadProgress,
+        );
       }
+
       const res = await api.post(`/posts/${activePostId}/comment`, {
         encryptedContent: encrypted,
         encryptedMedia,
@@ -306,7 +247,7 @@ const ThreadBottomSheet = ({
         repostsCount: newReply.repostsCount ?? 0,
         repliesCount: newReply.repliesCount ?? 0,
         content: plain,
-        media: mediaToPost,
+        media: mediaToPost ? mediaToPost.uri : null, // Store local preview URI
         isDecrypted: true,
         feedKey,
       };
@@ -328,9 +269,11 @@ const ThreadBottomSheet = ({
       );
       setReplyText("");
       setImageBase64(null);
+      setUploadProgress(null);
     } catch (e) {
       console.error("Reply failed", e);
-      alert("Failed to post reply.");
+      showToast("Failed to post reply.");
+      setUploadProgress(null);
     } finally {
       setSubmitting(false);
     }
@@ -386,7 +329,7 @@ const ThreadBottomSheet = ({
         )}
       </View>
     ),
-    [activePost, handleBack, handleClose, threadStack.length],
+    [activePost, allowDelete, handleDeletePost, handleBack, handleClose, threadStack.length],
   );
 
   const handleReplyChange = useCallback((text) => {
@@ -398,15 +341,26 @@ const ThreadBottomSheet = ({
       <View className="px-4 pt-3 pb-8 bg-[#121212]">
         <View className="rounded-[26px] bg-[#1B1B1B] border border-white/10 px-4 py-3">
           {imageBase64 && (
-            <View className="mb-3 rounded-2xl overflow-hidden">
+            <View className="mb-3 rounded-2xl overflow-hidden relative">
               <Image
-                source={{ uri: `data:image/jpeg;base64,${imageBase64}` }}
+                source={{ uri: imageBase64.uri }}
                 className="w-full h-44"
                 resizeMode="cover"
               />
+              {uploadProgress !== null && (
+                <View className="absolute inset-0 bg-black/60 items-center justify-center">
+                  <Text
+                    style={{ fontFamily: "WrenSemiBold" }}
+                    className="text-white text-xs font-semibold"
+                  >
+                    {uploadProgress}% Uploading...
+                  </Text>
+                </View>
+              )}
               <Pressable
                 className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/70 items-center justify-center"
                 onPress={() => setImageBase64(null)}
+                disabled={uploadProgress !== null}
               >
                 <X size={16} color="#fff" />
               </Pressable>
@@ -421,6 +375,7 @@ const ThreadBottomSheet = ({
               placeholderTextColor="rgba(255,255,255,.45)"
               multiline
               maxLength={280}
+              editable={uploadProgress === null}
               style={{
                 flex: 1,
                 color: "#fff",
@@ -433,16 +388,20 @@ const ThreadBottomSheet = ({
               }}
             />
 
-            <Pressable onPress={handlePickImage} className="ml-2 mb-1">
+            <Pressable
+              onPress={handlePickImage}
+              disabled={uploadProgress !== null}
+              className={`ml-2 mb-1 p-1 rounded-full ${uploadProgress !== null ? "opacity-50" : "active:opacity-75"
+                }`}
+            >
               <ImageIcon size={22} color="#fff" />
             </Pressable>
 
             <Pressable
               onPress={handleSubmit}
-              disabled={!canSubmit || submitting}
-              className={`ml-2 h-11 w-11 rounded-full items-center justify-center ${
-                canSubmit ? "bg-primary" : "bg-white/10"
-              }`}
+              disabled={!canSubmit || submitting || uploadProgress !== null}
+              className="ml-2 h-11 w-11 rounded-full items-center justify-center"
+              style={{ backgroundColor: canSubmit && uploadProgress === null ? colors.primary : "rgba(255, 255, 255, 0.1)" }}
             >
               {submitting ? (
                 <ActivityIndicator color="#fff" />
@@ -465,6 +424,7 @@ const ThreadBottomSheet = ({
       imageBase64,
       canSubmit,
       submitting,
+      uploadProgress,
       handlePickImage,
       handleReplyChange,
       handleSubmit,

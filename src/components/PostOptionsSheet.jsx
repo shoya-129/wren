@@ -2,18 +2,19 @@ import BottomSheet, {
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Flag,
-  Send,
-  ShieldAlert,
-  Trash2,
-  X,
-} from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import {
+  AlertTriangleIcon as AlertTriangle,
+  ArrowLeftIcon as ArrowLeft,
+  FlagIcon as Flag,
+  SendIcon as Send,
+  ShieldAlertIcon as ShieldAlert,
+  Trash2Icon as Trash2,
+  XIcon as X,
+} from "../lib/icons";
 import api from "../utils/api";
+import { showToast } from "../utils/toast";
 
 const REPORT_REASONS = [
   { key: "spam", label: "Spam" },
@@ -68,11 +69,11 @@ const PostOptionsSheet = ({
         reason,
         details: details.trim() || undefined,
       });
-      Alert.alert("Report sent", "Thanks. Your report was submitted.");
+      showToast("Thanks. Your report was submitted.");
       handleClose();
     } catch (e) {
       console.error("Failed to report post", e);
-      Alert.alert("Report failed", "Could not send the report right now.");
+      showToast("Could not send the report right now.");
     } finally {
       setSubmitting(false);
     }
@@ -88,7 +89,7 @@ const PostOptionsSheet = ({
       handleClose();
     } catch (e) {
       console.error("Failed to delete post", e);
-      Alert.alert("Delete failed", "Could not delete this post.");
+      showToast("Could not delete this post.");
     } finally {
       setDeleting(false);
     }
@@ -220,11 +221,10 @@ const PostOptionsSheet = ({
                   <Pressable
                     key={item.key}
                     onPress={() => setReason(item.key)}
-                    className={`px-4 py-2 rounded-full border ${
-                      active
+                    className={`px-4 py-2 rounded-full border ${active
                         ? "bg-red-500/15 border-red-500/30"
                         : "bg-white/5 border-white/10"
-                    }`}
+                      }`}
                   >
                     <Text
                       className={

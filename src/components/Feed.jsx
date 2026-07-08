@@ -1,10 +1,11 @@
-import { useFocusEffect } from "expo-router";
-import React, { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, View } from "react-native";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { ActivityIndicator, FlatList, RefreshControl, View } from "react-native";
 import { useUser } from "../context/UserContext";
+import colors from "../lib/colors.json";
 import api from "../utils/api";
 import { cacheProfiles } from "../utils/cache";
-import { decryptAsymmetric, decryptData } from "../utils/encryption";
+import { showToast } from "../utils/toast";
+import { decryptPostsOrReplies } from "../utils/wrencryption";
 import PostCard from "./PostCard";
 import PostOptionsSheet from "./PostOptionsSheet";
 import ThreadBottomSheet from "./ThreadBottomSheet";
@@ -28,22 +29,14 @@ const isReplyRecord = (item) => {
   );
 };
 
-const getPostEncryptedFeedKey = (post) => {
-  return (
-    post?.encryptedFeedKey ??
-      post?.follow?.encryptedFeedKey ??
-      post?.relationship?.encryptedFeedKey ??
-      post?.author?.encryptedFeedKey ??
-      null
-  );
-};
-
-const Feed = ({ onThreadVisibilityChange }) => {
+const Feed = forwardRef(({ onThreadVisibilityChange }, ref) => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
   const [isSheetVisible, setIsSheetVisible] = useState(false);
   const [optionsPost, setOptionsPost] = useState(null);
+  const flatListRef = useRef(null);
 
   // Pull user and crypto context
   const {
@@ -72,71 +65,22 @@ const Feed = ({ onThreadVisibilityChange }) => {
         ? topLevelPosts.filter((p) => p.uid !== user.uid)
         : topLevelPosts;
 
-      const decrypted = await Promise.all(
-        filtered.map(async (post) => {
-          let postFeedKey = null;
-          let content = post.content ?? "";
-          let isDecrypted = false;
-          let media = post.media ?? null;
-
-          const authorId = post.author?.uid ?? post.uid;
-          const encryptedFeedKey = getPostEncryptedFeedKey(post);
-
-          if (authorId && authorId === user?.uid && feedKey) {
-            postFeedKey = feedKey;
-          } else if (encryptedFeedKey && publicKey && privateKey) {
-            try {
-              postFeedKey = await decryptAsymmetric(
-                encryptedFeedKey,
-                publicKey,
-                privateKey,
-              );
-              if (authorId) {
-                cacheFeedKey(authorId, postFeedKey);
-                updateFollowingStatus(authorId, "accepted");
-              }
-            } catch (e) {
-              console.warn("Failed to decrypt feed key", e);
-            }
-          } else if (authorId && feedKeysCache[authorId]) {
-            postFeedKey = feedKeysCache[authorId];
-          }
-
-          if (post.encryptedContent && postFeedKey) {
-            try {
-              content = await decryptData(post.encryptedContent, postFeedKey);
-              isDecrypted = true;
-            } catch (e) {
-              console.warn("Failed to decrypt post content", e);
-            }
-          } else if (post.content) {
-            isDecrypted = true;
-          }
-
-          if (post.encryptedMedia && postFeedKey) {
-            try {
-              media = await decryptData(post.encryptedMedia, postFeedKey);
-            } catch (e) {
-              console.warn("Failed to decrypt post media", e);
-            }
-          }
-
-          return {
-            ...post,
-            content,
-            media,
-            isDecrypted,
-            feedKey: postFeedKey,
-          };
-        }),
-      );
+      const decrypted = await decryptPostsOrReplies(filtered, {
+        currentUserUid: user?.uid,
+        feedKey,
+        feedKeysCache,
+        publicKey,
+        privateKey,
+        cacheFeedKey,
+        updateFollowingStatus,
+      });
       setPosts(decrypted);
       setLoading(false);
 
-      await cacheProfiles(decrypted).catch(console.error);
+      cacheProfiles(decrypted).catch(console.error);
     } catch (e) {
       console.error("Failed to fetch feed", e);
-      Alert.alert("Error", "Failed to load feed. Please try again later.");
+      showToast("Failed to load feed. Please try again later.");
     } finally {
       setLoading(false);
     }
@@ -151,11 +95,24 @@ const Feed = ({ onThreadVisibilityChange }) => {
     updateFollowingStatus,
   ]);
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchAndDecrypt();
-    }, [fetchAndDecrypt]),
-  );
+  useEffect(() => {
+    fetchAndDecrypt();
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    addPost(newPost) {
+      setPosts((prev) => [newPost, ...prev]);
+      setTimeout(() => {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+      }, 100);
+    }
+  }));
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchAndDecrypt();
+    setRefreshing(false);
+  };
 
   const openThread = useCallback((post) => {
     setSelectedPost(post);
@@ -202,7 +159,7 @@ const Feed = ({ onThreadVisibilityChange }) => {
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center">
-        <ActivityIndicator size="large" color="#4F7DFF" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -210,11 +167,20 @@ const Feed = ({ onThreadVisibilityChange }) => {
   return (
     <View className="flex-1 bg-black">
       <FlatList
+        ref={flatListRef}
         data={posts}
         keyExtractor={(item) =>
           item.postId?.toString() ?? Math.random().toString()}
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#FFFFFF"
+            colors={[colors.primary]}
+          />
+        }
         contentContainerStyle={{
           paddingBottom: 96,
           paddingHorizontal: 16,
@@ -237,6 +203,8 @@ const Feed = ({ onThreadVisibilityChange }) => {
       />
     </View>
   );
-};
+});
+
+Feed.displayName = "Feed";
 
 export default Feed;

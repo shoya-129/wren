@@ -1,14 +1,22 @@
-import React from "react";
 import { Text, View } from "react-native";
 import {
-  Clock,
-  Key,
-  Lock,
-  ShieldCheck,
-  UserMinus,
-  UserPlus,
-  UserX,
-} from "lucide-react-native";
+  ClockIcon as Clock,
+  KeyIcon as Key,
+  LockIcon as Lock,
+  ShieldCheckIcon as ShieldCheck,
+  UserMinusIcon as UserMinus,
+  UserPlusIcon as UserPlus,
+  UserXIcon as UserX,
+} from "../lib/icons";
+import colors from "../lib/colors.json";
+
+const hexToRgba = (hex, opacity) => {
+  if (!hex || !hex.startsWith("#")) return "rgba(255, 255, 255, 0.1)";
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+};
 
 const formatActivityTime = (dateString) => {
   const date = new Date(dateString);
@@ -29,26 +37,29 @@ const formatActivityTime = (dateString) => {
 const getActivityIcon = (type) => {
   switch (type) {
     case "follow_request_sent":
-      return { Icon: UserPlus, color: "#4F7DFF", bg: "bg-blue-500/10" };
+      return { Icon: UserPlus, color: colors.primary };
     case "follow_request_accepted":
-      return { Icon: Key, color: "#10B981", bg: "bg-emerald-500/10" };
+      return { Icon: Key, color: "#10B981" };
     case "follow_request_rejected":
-      return { Icon: UserMinus, color: "#EF4444", bg: "bg-red-500/10" };
+      return { Icon: UserMinus, color: "#EF4444" };
     case "unfollowed":
-      return { Icon: UserX, color: "#F59E0B", bg: "bg-amber-500/10" };
+      return { Icon: UserX, color: "#F59E0B" };
     case "post_created":
-      return { Icon: ShieldCheck, color: "#8B5CF6", bg: "bg-violet-500/10" };
+      return { Icon: ShieldCheck, color: "#8B5CF6" };
     default:
-      return { Icon: Lock, color: "#71717A", bg: "bg-white/10" };
+      return { Icon: Lock, color: "#71717A" };
   }
 };
 
 const SecurityActivityCard = ({ item }) => {
-  const { Icon, color, bg } = getActivityIcon(item.type);
+  const { Icon, color } = getActivityIcon(item.type);
 
   return (
     <View className="flex-row items-start gap-4 border-b border-white/20 py-4">
-      <View className={`w-10 h-10 rounded-full items-center justify-center ${bg}`}>
+      <View
+        className="w-10 h-10 rounded-full items-center justify-center"
+        style={{ backgroundColor: hexToRgba(color, 0.1) }}
+      >
         <Icon size={18} color={color} strokeWidth={2.2} />
       </View>
       <View className="flex-1">

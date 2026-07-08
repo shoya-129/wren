@@ -1,9 +1,7 @@
-import { Search, User, UserCheck, UserPlus } from "lucide-react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Pressable,
@@ -14,11 +12,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "../../context/UserContext";
+import { CompassIcon as Compass, SearchIcon as Search, UserCheckIcon as UserCheck, UserPlusIcon as UserPlus, UserRoundIcon as UserRound, VerifiedIcon as Verified } from "../../lib/icons";
 import api from "../../utils/api";
+import { cacheProfiles } from "../../utils/cache";
+import colors from "../../lib/colors.json";
 import { getEntityUid } from "../../utils/followStatus";
+import { showToast } from "../../utils/toast";
 import { getPaginatedData } from "../../utils/users";
 
-export default function SearchScreen() {
+export default function ExploreScreen() {
   const router = useRouter();
   const {
     user: currentUser,
@@ -31,6 +33,9 @@ export default function SearchScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [actionInProgress, setActionInProgress] = useState({});
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const syncAcceptedFollowsFromFeed = useCallback(async () => {
     try {
@@ -54,13 +59,22 @@ export default function SearchScreen() {
   }, [updateFollowingStatus]);
 
   const fetchUsers = useCallback(
-    async (showLoading = true) => {
-      if (showLoading) setIsLoading(true);
+    async (pageNumber = 1, showLoading = true) => {
+      if (pageNumber === 1) {
+        if (showLoading) setIsLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
+
       try {
-        const [usersRes] = await Promise.all([
-          api.get("/user/all", { params: { page: 1, limit: 50 } }),
-          syncAcceptedFollowsFromFeed(),
-        ]);
+        if (pageNumber === 1) {
+          await syncAcceptedFollowsFromFeed();
+        }
+
+        const limit = 10;
+        const usersRes = await api.get("/user/all", {
+          params: { page: pageNumber, limit },
+        });
 
         const normalizedUsers = getPaginatedData(usersRes.data)
           .map((u) => ({ ...u, uid: getEntityUid(u) }))
@@ -68,13 +82,35 @@ export default function SearchScreen() {
         const filtered = normalizedUsers.filter(
           (u) => u.uid !== currentUser?.uid,
         );
-        setUsers(filtered);
+
+        if (pageNumber === 1) {
+          setUsers(filtered);
+          setHasMore(filtered.length >= limit);
+        } else {
+          setUsers((prev) => {
+            const merged = [...prev, ...filtered];
+            const unique = [];
+            const seen = new Set();
+            for (const u of merged) {
+              if (!seen.has(u.uid)) {
+                seen.add(u.uid);
+                unique.push(u);
+              }
+            }
+            return unique;
+          });
+          setHasMore(filtered.length >= limit);
+        }
+
+        setPage(pageNumber);
+        cacheProfiles(filtered).catch(console.error);
       } catch (e) {
         console.error("Error fetching users:", e);
-        Alert.alert("Error", "Failed to load users list. Please try again.");
+        showToast("Failed to load users list. Please try again.");
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
+        setIsLoadingMore(false);
       }
     },
     [currentUser?.uid, syncAcceptedFollowsFromFeed],
@@ -83,14 +119,14 @@ export default function SearchScreen() {
   useFocusEffect(
     useCallback(() => {
       if (currentUser?.uid) {
-        fetchUsers(true);
+        fetchUsers(1, true);
       }
     }, [currentUser?.uid, fetchUsers]),
   );
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    fetchUsers(false);
+    fetchUsers(1, false);
   };
 
   const handleFollowToggle = async (targetUser) => {
@@ -138,16 +174,29 @@ export default function SearchScreen() {
       } else {
         updateFollowingStatus(uid, "none");
       }
+
+
     } catch (e) {
       console.error(`Error toggling follow for ${username}:`, e);
       updateFollowingStatus(uid, currentStatus);
-      Alert.alert(
-        "Follow Failed",
-        `Could not update follow status for @${username}.`,
-      );
+      showToast(`Could not update follow status for @${username}.`);
     } finally {
       setActionInProgress((prev) => ({ ...prev, [uid]: false }));
     }
+  };
+
+  const loadMoreUsers = () => {
+    if (isLoading || isLoadingMore || !hasMore || users.length === 0) return;
+    fetchUsers(page + 1, false);
+  };
+
+  const renderFooter = () => {
+    if (!isLoadingMore) return null;
+    return (
+      <View className="py-4 items-center">
+        <ActivityIndicator size="small" color={colors.primary} />
+      </View>
+    );
   };
 
   const filteredUsers = users.filter((u) => {
@@ -165,16 +214,17 @@ export default function SearchScreen() {
     const isAccepted = status === "accepted";
     const loading = actionInProgress[item.uid];
 
-    let buttonBg = "bg-primary";
+    let isDefault = !isPending && !isAccepted;
+    let buttonBgClass = "";
     let buttonText = "Follow";
     let Icon = UserPlus;
 
     if (isPending) {
-      buttonBg = "bg-white/10 border border-white/20";
+      buttonBgClass = "bg-white/10 border border-white/20";
       buttonText = "Requested";
       Icon = UserCheck;
     } else if (isAccepted) {
-      buttonBg = "bg-transparent border border-white/20";
+      buttonBgClass = "bg-transparent border border-white/20";
       buttonText = "Following";
       Icon = UserCheck;
     }
@@ -198,16 +248,19 @@ export default function SearchScreen() {
                 className="w-full h-full rounded-full"
               />
             ) : (
-              <User size={18} color="#4F7DFF" strokeWidth={2} />
+              <UserRound size={18} color={colors.primary} strokeWidth={2} />
             )}
           </View>
           <View className="flex-1">
-            <Text
-              className="text-white text-base font-semibold"
-              numberOfLines={1}
-            >
-              {item.name || item.username}
-            </Text>
+            <View className="flex-row items-center gap-1">
+              <Text
+                className="text-white text-base font-semibold"
+                numberOfLines={1}
+              >
+                {item.name || item.username}
+              </Text>
+              {item.verified && <Verified size={16.5} />}
+            </View>
             <Text className="text-white/60 text-sm" numberOfLines={1}>
               @{item.username}
             </Text>
@@ -218,9 +271,9 @@ export default function SearchScreen() {
         <Pressable
           onPress={() => handleFollowToggle(item)}
           disabled={loading || !item.uid}
-          className={`flex-row items-center gap-1.5 px-4 py-2 rounded-full min-w-[100px] justify-center ${buttonBg} ${
-            loading || !item.uid ? "opacity-60" : "active:opacity-80"
-          }`}
+          className={`flex-row items-center gap-1.5 px-4 py-2 rounded-full min-w-[100px] justify-center ${buttonBgClass} ${loading || !item.uid ? "opacity-60" : "active:opacity-80"
+            }`}
+          style={isDefault ? { backgroundColor: colors.primary } : undefined}
         >
           {loading ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
@@ -242,12 +295,12 @@ export default function SearchScreen() {
       <View className="flex-1 px-6 pt-4">
         {/* Header */}
         <View className="flex-row items-center gap-2 mb-6">
-          <Search size={22} color="#4F7DFF" strokeWidth={2} />
+          <Compass size={22} color={colors.primary} strokeWidth={2} />
           <Text
             style={{ fontFamily: "WrenBold" }}
             className="text-white text-2xl"
           >
-            Search
+            Explore
           </Text>
         </View>
 
@@ -271,18 +324,21 @@ export default function SearchScreen() {
           keyExtractor={(item) => item.uid}
           renderItem={renderUserItem}
           showsVerticalScrollIndicator={false}
+          onEndReached={loadMoreUsers}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={renderFooter}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
-              tintColor="#4F7DFF"
-              colors={["#4F7DFF"]}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
             />
           }
           ListEmptyComponent={
             <View className="py-12 items-center">
               {isLoading ? (
-                <ActivityIndicator size="large" color="#4F7DFF" />
+                <ActivityIndicator size="large" color={colors.primary} />
               ) : (
                 <Text className="text-white/40 text-base text-center">
                   {searchQuery.trim()

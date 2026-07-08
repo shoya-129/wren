@@ -1,12 +1,13 @@
 import { Tabs } from "expo-router";
-import { Bell, Home, Search, User } from "lucide-react-native";
+import { BellIcon as Bell, CompassIcon as Compass, HomeIcon as Home, UserRoundIcon as UserRound } from "../../lib/icons";
+import colors from "../../lib/colors.json";
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#4F7DFF",
+        tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: "#71717a",
         tabBarStyle: {
           backgroundColor: "#000000",
@@ -16,10 +17,7 @@ export default function TabLayout() {
           paddingBottom: 8,
           paddingTop: 8,
         },
-        tabBarLabelStyle: {
-          fontFamily: "WrenMedium",
-          fontSize: 11,
-        },
+        tabBarShowLabel: false,
       }}
     >
       <Tabs.Screen
@@ -32,11 +30,11 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="search"
+        name="explore"
         options={{
-          title: "Search",
+          title: "Explore",
           tabBarIcon: ({ color, size }) => (
-            <Search size={size} color={color} strokeWidth={2} />
+            <Compass size={size} color={color} strokeWidth={2} />
           ),
         }}
       />
@@ -54,7 +52,7 @@ export default function TabLayout() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color, size }) => (
-            <User size={size} color={color} strokeWidth={2} />
+            <UserRound size={size} color={color} strokeWidth={2} />
           ),
         }}
       />

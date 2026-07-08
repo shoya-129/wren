@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -10,13 +10,14 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Bell } from "lucide-react-native";
-import { useUser } from "../../context/UserContext";
-import api from "../../utils/api";
-import { encryptAsymmetric } from "../../utils/encryption";
 import FollowRequestCard from "../../components/FollowRequestCard";
 import SecurityActivityCard from "../../components/SecurityActivityCard";
+import { useUser } from "../../context/UserContext";
+import { BellIcon as Bell } from "../../lib/icons";
+import api from "../../utils/api";
+import colors from "../../lib/colors.json";
+import { encryptAsymmetric } from "../../utils/encryption";
+import { showToast } from "../../utils/toast";
 
 export default function NotificationsScreen() {
   const { feedKey, activities, addActivity } = useUser();
@@ -53,7 +54,7 @@ export default function NotificationsScreen() {
       );
     } catch (e) {
       console.error("Error fetching pending requests:", e);
-      Alert.alert("Error", "Failed to load pending follow requests.");
+      showToast("Failed to load pending follow requests.");
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -80,7 +81,7 @@ export default function NotificationsScreen() {
     if (actionInProgress[followerId]) return;
 
     if (!feedKey) {
-      Alert.alert("Error", "Feed key is missing. Please log in again.");
+      showToast("Feed key is missing. Please log in again.");
       return;
     }
 
@@ -92,7 +93,7 @@ export default function NotificationsScreen() {
       AsyncStorage.setItem(
         "cached_follow_requests",
         JSON.stringify(updated),
-      ).catch(() => {});
+      ).catch(() => { });
       return updated;
     });
 
@@ -114,11 +115,8 @@ export default function NotificationsScreen() {
       AsyncStorage.setItem(
         "cached_follow_requests",
         JSON.stringify(originalRequests),
-      ).catch(() => {});
-      Alert.alert(
-        "Accept Failed",
-        `Could not accept @${username}'s follow request.`,
-      );
+      ).catch(() => { });
+      showToast(`Could not accept @${username}'s follow request.`);
     } finally {
       setActionInProgress((prev) => ({ ...prev, [followerId]: null }));
     }
@@ -136,7 +134,7 @@ export default function NotificationsScreen() {
       AsyncStorage.setItem(
         "cached_follow_requests",
         JSON.stringify(updated),
-      ).catch(() => {});
+      ).catch(() => { });
       return updated;
     });
 
@@ -154,11 +152,8 @@ export default function NotificationsScreen() {
       AsyncStorage.setItem(
         "cached_follow_requests",
         JSON.stringify(originalRequests),
-      ).catch(() => {});
-      Alert.alert(
-        "Reject Failed",
-        `Could not reject @${username}'s follow request.`,
-      );
+      ).catch(() => { });
+      showToast(`Could not reject @${username}'s follow request.`);
     } finally {
       setActionInProgress((prev) => ({ ...prev, [followerId]: null }));
     }
@@ -180,7 +175,7 @@ export default function NotificationsScreen() {
       <View className="flex-1 px-6 pt-4">
         {/* Header */}
         <View className="flex-row items-center gap-2 mb-6">
-          <Bell size={22} color="#4F7DFF" strokeWidth={2} />
+          <Bell size={22} color={colors.primary} strokeWidth={2} />
           <Text
             style={{ fontFamily: "WrenBold" }}
             className="text-white text-2xl"
@@ -193,28 +188,24 @@ export default function NotificationsScreen() {
         <View className="flex-row bg-white/5 border border-white/10 rounded-full p-1 mb-6">
           <Pressable
             onPress={() => setActiveTab("requests")}
-            className={`flex-1 py-2.5 rounded-full items-center ${
-              activeTab === "requests" ? "bg-white/10" : "bg-transparent"
-            }`}
+            className={`flex-1 py-2.5 rounded-full items-center ${activeTab === "requests" ? "bg-white/10" : "bg-transparent"
+              }`}
           >
             <Text
-              className={`text-sm font-semibold ${
-                activeTab === "requests" ? "text-white" : "text-white/60"
-              }`}
+              className={`text-sm font-semibold ${activeTab === "requests" ? "text-white" : "text-white/60"
+                }`}
             >
               Requests ({requests.length})
             </Text>
           </Pressable>
           <Pressable
             onPress={() => setActiveTab("activity")}
-            className={`flex-1 py-2.5 rounded-full items-center ${
-              activeTab === "activity" ? "bg-white/10" : "bg-transparent"
-            }`}
+            className={`flex-1 py-2.5 rounded-full items-center ${activeTab === "activity" ? "bg-white/10" : "bg-transparent"
+              }`}
           >
             <Text
-              className={`text-sm font-semibold ${
-                activeTab === "activity" ? "text-white" : "text-white/60"
-              }`}
+              className={`text-sm font-semibold ${activeTab === "activity" ? "text-white" : "text-white/60"
+                }`}
             >
               Security Log
             </Text>
@@ -233,14 +224,14 @@ export default function NotificationsScreen() {
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
-              tintColor="#4F7DFF"
-              colors={["#4F7DFF"]}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
             />
           }
           ListEmptyComponent={
             <View className="py-16 items-center">
               {isLoading && activeTab === "requests" ? (
-                <ActivityIndicator size="large" color="#4F7DFF" />
+                <ActivityIndicator size="large" color={colors.primary} />
               ) : (
                 <Text className="text-white/40 text-base text-center">
                   {activeTab === "requests"

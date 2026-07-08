@@ -3,30 +3,32 @@ import BottomSheet, {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import {
-  Lock,
-  ShieldCheck,
-  UserCheck,
-  UserPlus,
-  Users,
-  X,
-} from "lucide-react-native";
+  LockIcon as Lock,
+  ShieldCheckIcon as ShieldCheck,
+  UserCheckIcon as UserCheck,
+  UserPlusIcon as UserPlus,
+  UsersIcon as Users,
+  XIcon as X,
+} from "../lib/icons";
 import { useMemo, useRef } from "react";
 import { Pressable, Text, View } from "react-native";
+import colors from "../lib/colors.json";
 
 const statValue = (value) => String(value ?? 0);
 
 function StatCard({ icon, label, value, tone = "blue" }) {
   const tones = {
-    blue: "text-[#4F7DFF]",
-    green: "text-[#10B981]",
-    amber: "text-[#F59E0B]",
-    red: "text-[#EF4444]",
+    green: { color: "#10B981" },
+    amber: { color: "#F59E0B" },
+    red: { color: "#EF4444" },
   };
+
+  const textStyle = tone === "blue" ? { color: colors.primary } : (tones[tone] || { color: colors.primary });
 
   return (
     <View className="w-[48.5%] rounded-2xl bg-white/5 border border-white/10 p-4 mb-3">
       <View className="mb-2">{icon}</View>
-      <Text className={`text-xl font-bold mb-1 ${tones[tone] || tones.blue}`}>
+      <Text style={textStyle} className="text-xl font-bold mb-1">
         {value}
       </Text>
       <Text className="text-white/60 text-xs leading-4">{label}</Text>
@@ -91,7 +93,7 @@ export default function WrencryptionSheet({
 
           <View className="rounded-3xl bg-white/5 border border-white/10 p-5 mb-4">
             <View className="flex-row items-center gap-2 mb-2">
-              <ShieldCheck size={18} color="#4F7DFF" strokeWidth={2.2} />
+              <ShieldCheck size={18} color={colors.primary} strokeWidth={2.2} />
               <Text className="text-white text-base font-semibold">
                 Followers-only access
               </Text>
@@ -110,7 +112,7 @@ export default function WrencryptionSheet({
             <View className="flex-row flex-wrap justify-between">
               <StatCard
                 icon={
-                  <ShieldCheck size={16} color="#4F7DFF" strokeWidth={2.2} />
+                  <ShieldCheck size={16} color={colors.primary} strokeWidth={2.2} />
                 }
                 label="Followers holding your feed key"
                 value={statValue(sharedFeedKeyCount)}
@@ -128,7 +130,7 @@ export default function WrencryptionSheet({
                 tone="green"
               />
               <StatCard
-                icon={<Users size={16} color="#4F7DFF" strokeWidth={2.2} />}
+                icon={<Users size={16} color={colors.primary} strokeWidth={2.2} />}
                 label="Potential audience"
                 value={statValue(potentialAudienceCount)}
               />

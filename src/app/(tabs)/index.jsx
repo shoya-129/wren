@@ -2,32 +2,40 @@ import BottomSheet, {
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
-import {
-  Image as ImageIcon,
-  Plus,
-  Send,
-  ShieldAlert,
-  ShieldCheck,
-  X,
-} from "lucide-react-native";
-import React, { useMemo, useRef, useState } from "react";
-import { Alert, Image, Pressable, Text, View } from "react-native";
+import { useMemo, useRef, useState } from "react";
+import { Image, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Feed from "../../components/Feed";
 import SecuritySheet from "../../components/SecuritySheet";
+import WrenIsland from "../../components/WrenIsland";
 import { useUser } from "../../context/UserContext";
+import {
+  FileTextIcon as FileText,
+  ImageIconIcon as ImageIcon,
+  LockIcon as Lock,
+  PlusIcon as Plus,
+  SendIcon as Send,
+  ShieldAlertIcon as ShieldAlert,
+  ShieldCheckIcon as ShieldCheck,
+  XIcon as X,
+} from "../../lib/icons";
 import api from "../../utils/api";
+import colors from "../../lib/colors.json";
 import { encryptData } from "../../utils/encryption";
-import { pickImageBase64 } from "../../utils/media";
+import { pickImageBase64, uploadEncryptedMedia } from "../../utils/media";
+import { showToast } from "../../utils/toast";
 
 export default function HomeScreen() {
-  const { feedKey, addActivity } = useUser();
+  const { feedKey, addActivity, user } = useUser();
   const [postContent, setPostContent] = useState("");
-  const [imageBase64, setImageBase64] = useState(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [imageBase64, setImageBase64] = useState(null); // stores { uri, base64 }
+  const [uploadProgress, setUploadProgress] = useState(null); // stores progress percentage or null
+  const [isSecuring, setIsSecuring] = useState(false);
 
   const securitySheetref = useRef(null);
   const bottomSheetRef = useRef(null);
+  const feedRef = useRef(null);
+  const pendingPostRef = useRef(null);
   const snapPoints = useMemo(() => ["85%"], []);
 
   const openCompose = () => {
@@ -35,45 +43,42 @@ export default function HomeScreen() {
   };
 
   const handlePickImage = async () => {
-    const base64 = await pickImageBase64();
-    if (base64) {
-      setImageBase64(base64);
+    const result = await pickImageBase64();
+    if (result) {
+      setImageBase64(result);
     }
   };
 
   const handleCreatePost = async () => {
     if (!postContent.trim()) {
-      Alert.alert("Empty Post", "Please write some content to share.");
+      showToast("Please write some content to share.");
       return;
     }
 
     if (!feedKey) {
-      Alert.alert(
-        "Encryption Error",
-        "Your feed key is missing. Please log in again.",
-      );
+      showToast("Your feed key is missing. Please log in again.");
       return;
     }
 
-    // Capture values to use in background
     const contentToPost = postContent.trim();
     const mediaToPost = imageBase64;
 
-    // Optimistic success cleanup
-    setPostContent("");
-    setImageBase64(null);
-    bottomSheetRef.current?.close();
-
-    // Perform encryption and API call in background
+    // Perform encryption and API call
     (async () => {
       try {
+        setUploadProgress(0); // Starts showing progress loader
         const encryptedContent = await encryptData(contentToPost, feedKey);
         let encryptedMedia = null;
+
         if (mediaToPost) {
-          encryptedMedia = await encryptData(mediaToPost, feedKey);
+          encryptedMedia = await uploadEncryptedMedia(
+            mediaToPost,
+            feedKey,
+            setUploadProgress,
+          );
         }
 
-        await api.post("/posts", {
+        const response = await api.post("/posts", {
           encryptedContent,
           encryptedMedia,
           visibility: "followers",
@@ -85,13 +90,37 @@ export default function HomeScreen() {
           "You published a secure end-to-end encrypted post",
         );
 
-        setRefreshKey((prev) => prev + 1); // Triggers Feed component reload
+        // Success: Clean up editor states and close bottom sheet
+        setPostContent("");
+        setImageBase64(null);
+        setUploadProgress(null);
+        bottomSheetRef.current?.close();
+
+        // Hydrate decrypted post locally so it renders immediately without refresh
+        const newPostObj = {
+          ...response.data,
+          content: contentToPost,
+          media: mediaToPost ? mediaToPost.uri : null,
+          isDecrypted: true,
+          author: {
+            uid: user?.uid,
+            username: user?.username,
+            name: user?.name,
+            avatar: user?.avatar,
+            verified: user?.verified,
+          },
+          likesCount: 0,
+          repostsCount: 0,
+          repliesCount: 0,
+          feedKey: feedKey,
+        };
+
+        pendingPostRef.current = newPostObj;
+        setIsSecuring(true);
       } catch (e) {
-        console.error("Error creating post in background:", e);
-        Alert.alert(
-          "Post Failed",
-          "Could not publish your post in the background. Please try again.",
-        );
+        console.error("Error creating post:", e);
+        showToast("Could not publish your post. Please try again.");
+        setUploadProgress(null);
       }
     })();
   };
@@ -131,7 +160,7 @@ export default function HomeScreen() {
             <Pressable
               onPress={openCompose}
               className="h-10 px-4 rounded-full items-center justify-center active:opacity-80"
-              style={{ backgroundColor: "#4F7DFF" }}
+              style={{ backgroundColor: colors.primary }}
               accessibilityRole="button"
               accessibilityLabel="Create post"
             >
@@ -141,7 +170,7 @@ export default function HomeScreen() {
         </View>
 
         {/* Home Feed */}
-        <Feed key={refreshKey} />
+        <Feed ref={feedRef} />
 
         {/* Compose Post Bottom Sheet */}
         <BottomSheet
@@ -173,7 +202,7 @@ export default function HomeScreen() {
 
             {/* Character Limit and Info */}
             <View className="flex-row items-center gap-1.5 mb-4 bg-white/5 p-3 rounded-2xl border border-white/10">
-              <ShieldAlert size={14} color="#4F7DFF" />
+              <ShieldAlert size={14} color={colors.primary} />
               <Text
                 style={{ fontFamily: "WrenRegular" }}
                 className="text-white/40 text-xs flex-1"
@@ -190,6 +219,7 @@ export default function HomeScreen() {
                 placeholderTextColor="rgba(255, 255, 255, 0.4)"
                 multiline={true}
                 maxLength={280}
+                editable={uploadProgress === null}
                 style={{
                   textAlignVertical: "top",
                   fontSize: 16,
@@ -204,12 +234,23 @@ export default function HomeScreen() {
               {imageBase64 && (
                 <View className="mt-3 relative rounded-xl overflow-hidden bg-white/5 border border-white/10 max-h-36">
                   <Image
-                    source={{ uri: `data:image/jpeg;base64,${imageBase64}` }}
+                    source={{ uri: imageBase64.uri }}
                     className="w-full h-28"
                     resizeMode="cover"
                   />
+                  {uploadProgress !== null && (
+                    <View className="absolute inset-0 bg-black/60 items-center justify-center">
+                      <Text
+                        style={{ fontFamily: "WrenSemiBold" }}
+                        className="text-white text-xs font-semibold"
+                      >
+                        {uploadProgress}% Uploading...
+                      </Text>
+                    </View>
+                  )}
                   <Pressable
                     onPress={() => setImageBase64(null)}
+                    disabled={uploadProgress !== null}
                     className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 items-center justify-center"
                   >
                     <X size={12} color="#FFFFFF" />
@@ -221,7 +262,9 @@ export default function HomeScreen() {
               <View className="flex-row items-center justify-between mt-3 pt-2 border-t border-white/10">
                 <Pressable
                   onPress={handlePickImage}
-                  className="flex-row items-center gap-1.5 bg-white/5 px-3.5 py-1.5 rounded-full border border-white/15 active:opacity-75"
+                  disabled={uploadProgress !== null}
+                  className={`flex-row items-center gap-1.5 bg-white/5 px-3.5 py-1.5 rounded-full border border-white/15 ${uploadProgress !== null ? "opacity-50" : "active:opacity-75"
+                    }`}
                 >
                   <ImageIcon size={14} color="#FFFFFF" />
                   <Text
@@ -238,10 +281,10 @@ export default function HomeScreen() {
                   </Text>
                   <Pressable
                     onPress={handleCreatePost}
-                    disabled={!postContent.trim()}
-                    className={`flex-row items-center gap-1.5 px-4 py-2 rounded-full bg-primary ${
-                      !postContent.trim() ? "opacity-50" : "active:opacity-85"
-                    }`}
+                    disabled={!postContent.trim() || uploadProgress !== null}
+                    className={`flex-row items-center gap-1.5 px-4 py-2 rounded-full ${!postContent.trim() || uploadProgress !== null ? "opacity-50" : "active:opacity-85"
+                      }`}
+                    style={{ backgroundColor: colors.primary }}
                   >
                     <Send size={12} color="#FFFFFF" strokeWidth={2} />
                     <Text
@@ -262,6 +305,25 @@ export default function HomeScreen() {
           onContinue={closeSecuritySheet}
           panDown={true}
         />
+
+        {isSecuring && (
+          <WrenIsland
+            step1Text="Encrypting Post"
+            step2Text="Encrypted & Published"
+            step1IconLeft={<FileText size={16} color={colors.primary} strokeWidth={2.8} />}
+            step1IconRight={<ImageIcon size={16} color="#10B981" strokeWidth={2.8} />}
+            step2Icon={<Lock size={15} color="#8B5CF6" strokeWidth={3} />}
+            step1Width={220}
+            step2Width={240}
+            onComplete={() => {
+              if (pendingPostRef.current) {
+                feedRef.current?.addPost(pendingPostRef.current);
+                pendingPostRef.current = null;
+              }
+              setIsSecuring(false);
+            }}
+          />
+        )}
       </View>
     </SafeAreaView>
   );

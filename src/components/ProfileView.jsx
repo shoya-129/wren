@@ -1,18 +1,7 @@
 import { useFocusEffect, useRouter } from "expo-router";
-import {
-  ArrowLeft,
-  BadgeCheck,
-  Bell,
-  LogOut,
-  ShieldCheck,
-  User,
-  UserPlus,
-  Users,
-} from "lucide-react-native";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Pressable,
@@ -21,11 +10,23 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "../context/UserContext";
+import colors from "../lib/colors.json";
+import {
+  ArrowLeftIcon as ArrowLeft,
+  BellIcon as Bell,
+  LogOutIcon as LogOut,
+  ShieldCheckIcon as ShieldCheck,
+  UserPlusIcon as UserPlus,
+  UserRoundIcon as UserRound,
+  UsersIcon as Users,
+  VerifiedIcon as Verified
+} from "../lib/icons";
 import api from "../utils/api";
 import { findProfile } from "../utils/cache";
-import { decryptAsymmetric, decryptData } from "../utils/encryption";
 import { getFollowStatus } from "../utils/followStatus";
+import { showToast } from "../utils/toast";
 import { resolveUserId } from "../utils/users";
+import { decryptPostsOrReplies } from "../utils/wrencryption";
 import PostCard from "./PostCard";
 import PostOptionsSheet from "./PostOptionsSheet";
 import ThreadBottomSheet from "./ThreadBottomSheet";
@@ -103,64 +104,15 @@ const ProfileView = ({
 
   const decryptPosts = useCallback(
     async (items) => {
-      if (!items?.length) return [];
-
-      return Promise.all(
-        items.map(async (post) => {
-          const authorId = post.author?.uid ?? post.uid;
-          let postFeedKey = null;
-          let content = post.content ?? "";
-          let media = post.media ?? null;
-          let isDecrypted = false;
-
-          if (authorId && authorId === currentUser?.uid && feedKey) {
-            postFeedKey = feedKey;
-          } else if (authorId && feedKeysCache[authorId]) {
-            postFeedKey = feedKeysCache[authorId];
-          } else if (post.encryptedFeedKey && publicKey && privateKey) {
-            try {
-              postFeedKey = await decryptAsymmetric(
-                post.encryptedFeedKey,
-                publicKey,
-                privateKey,
-              );
-              if (authorId) {
-                cacheFeedKey(authorId, postFeedKey);
-                updateFollowingStatus(authorId, "accepted");
-              }
-            } catch (e) {
-              console.warn("Failed to decrypt profile post feed key", e);
-            }
-          }
-
-          if (post.encryptedContent && postFeedKey) {
-            try {
-              content = await decryptData(post.encryptedContent, postFeedKey);
-              isDecrypted = true;
-            } catch (e) {
-              console.warn("Failed to decrypt profile post content", e);
-            }
-          } else if (post.content) {
-            isDecrypted = true;
-          }
-
-          if (post.encryptedMedia && postFeedKey) {
-            try {
-              media = await decryptData(post.encryptedMedia, postFeedKey);
-            } catch (e) {
-              console.warn("Failed to decrypt profile post media", e);
-            }
-          }
-
-          return {
-            ...post,
-            content,
-            media,
-            isDecrypted,
-            feedKey: postFeedKey,
-          };
-        }),
-      );
+      return decryptPostsOrReplies(items, {
+        currentUserUid: currentUser?.uid,
+        feedKey,
+        feedKeysCache,
+        publicKey,
+        privateKey,
+        cacheFeedKey,
+        updateFollowingStatus,
+      });
     },
     [
       currentUser?.uid,
@@ -176,8 +128,9 @@ const ProfileView = ({
   const fetchProfile = useCallback(
     async (showLoading = true) => {
       if (isHydrating) return;
+      if (isOwnProfile && !currentUser) return;
       if (!isOwnProfile && !targetUsername && !targetUid) return;
-      if (showLoading && !(isOwnProfile && currentUser)) setLoading(true);
+      if (showLoading) setLoading(true);
 
       try {
         let profileRes;
@@ -276,10 +229,7 @@ const ProfileView = ({
         }
       } catch (e) {
         console.error("Failed to load profile", e);
-        Alert.alert(
-          "Profile unavailable",
-          "Could not load this profile right now.",
-        );
+        showToast("Could not load this profile right now.");
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -373,15 +323,17 @@ const ProfileView = ({
       return {
         label: "Following",
         className: "bg-white/10 border border-white/20",
+        isDefault: false,
       };
     }
     if (followState === "pending") {
       return {
         label: "Requested",
         className: "bg-white/10 border border-white/20",
+        isDefault: false,
       };
     }
-    return { label: "Follow", className: "bg-secondary" };
+    return { label: "Follow", className: "", isDefault: true };
   }, [followState, isOwnProfile]);
 
   const handleFollowToggle = async () => {
@@ -437,7 +389,7 @@ const ProfileView = ({
     } catch (e) {
       console.error("Failed to update follow status", e);
       updateFollowingStatus(profileUid, currentStatus);
-      Alert.alert("Follow failed", `Could not update @${username}.`);
+      showToast(`Could not update @${username}.`);
     } finally {
       setFollowLoading(false);
     }
@@ -518,7 +470,7 @@ const ProfileView = ({
                 className="w-full h-full"
               />
             )
-            : <User size={28} color="#4F7DFF" strokeWidth={2.2} />}
+            : <UserRound size={28} color={colors.primary} strokeWidth={2.2} />}
         </View>
 
         <View className="flex-row items-center gap-1.5">
@@ -531,7 +483,7 @@ const ProfileView = ({
               "Wren User"}
           </Text>
           {activeProfileUser?.verified
-            ? <BadgeCheck size={18} color="#4F7DFF" strokeWidth={2.2} />
+            ? <Verified size={19.5} />
             : null}
         </View>
         <Text className="text-white/55 text-sm mt-1">
@@ -603,7 +555,7 @@ const ProfileView = ({
                 onPress={() => setShowSecuritySheet(true)}
                 className="flex-1 h-12 rounded-full bg-white/10 border border-white/15 items-center justify-center flex-row gap-2"
               >
-                <ShieldCheck size={16} color="#4F7DFF" strokeWidth={2.2} />
+                <ShieldCheck size={16} color={colors.primary} strokeWidth={2.2} />
                 <Text className="text-white text-sm font-semibold">
                   Wrencryption
                 </Text>
@@ -626,6 +578,7 @@ const ProfileView = ({
               onPress={handleFollowToggle}
               disabled={followLoading}
               className={`flex-1 h-12 rounded-full items-center justify-center flex-row gap-2 ${followButton?.className}`}
+              style={followButton?.isDefault ? { backgroundColor: colors.primary } : undefined}
             >
               {followLoading ? <ActivityIndicator color="#FFFFFF" /> : (
                 <>
@@ -647,7 +600,7 @@ const ProfileView = ({
           Posts
         </Text>
         <View className="px-3 py-1.5 rounded-full bg-white/5 border border-white/10 flex-row items-center gap-1.5">
-          <Users size={13} color="#4F7DFF" strokeWidth={2.2} />
+          <Users size={13} color={colors.primary} strokeWidth={2.2} />
           <Text className="text-white/55 text-xs">
             {isOwnProfile ? "Refetches on open" : "Profile feed"}
           </Text>
@@ -659,7 +612,7 @@ const ProfileView = ({
   if (loading && !(isOwnProfile && activeProfileUser)) {
     return (
       <SafeAreaView className="flex-1 bg-black items-center justify-center">
-        <ActivityIndicator size="large" color="#4F7DFF" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
@@ -693,8 +646,7 @@ const ProfileView = ({
               {canViewPosts
                 ? isOwnProfile
                   ? "Your encrypted posts will appear here after you publish them."
-                  : `@${
-                    activeProfileUser?.username || targetUsername
+                  : `@${activeProfileUser?.username || targetUsername
                   } has not published any visible posts yet.`
                 : "This profile only shares posts with accepted followers."}
             </Text>

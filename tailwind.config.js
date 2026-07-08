@@ -1,3 +1,5 @@
+const colorsConfig = require("./src/lib/colors.json");
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ["./src/app/**/*.{js,jsx,ts,tsx}", "./src/components/**/*.{js,jsx,ts,tsx}"],
@@ -5,8 +7,8 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: "#4F7DFF",
-        secondary: "#3B5FCC",
+        primary: colorsConfig.primary,
+        secondary: colorsConfig.secondary,
       },
     },
   },

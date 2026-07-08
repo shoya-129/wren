@@ -1,6 +1,6 @@
-import React from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { Check, User, X } from "lucide-react-native";
+import { CheckIcon as Check, UserIcon as User, XIcon as X, VerifiedIcon as Verified } from "../lib/icons";
+import colors from "../lib/colors.json";
 
 const FollowRequestCard = ({ item, onAccept, onReject, actionType }) => {
   const isAccepting = actionType === "accept";
@@ -12,15 +12,18 @@ const FollowRequestCard = ({ item, onAccept, onReject, actionType }) => {
       {/* Profile Info */}
       <View className="flex-row items-center gap-3 flex-1 mr-3">
         <View className="w-10 h-10 rounded-full bg-white/10 border border-white/20 items-center justify-center">
-          <User size={18} color="#4F7DFF" strokeWidth={2} />
+          <User size={18} color={colors.primary} strokeWidth={2} />
         </View>
         <View className="flex-1">
-          <Text
-            className="text-white text-base"
-            numberOfLines={1}
-          >
-            {item.name || item.username}
-          </Text>
+          <View className="flex-row items-center gap-1">
+            <Text
+              className="text-white text-base font-semibold"
+              numberOfLines={1}
+            >
+              {item.name || item.username}
+            </Text>
+            {item.verified && <Verified size={16.5} />}
+          </View>
           <Text
             className="text-white/60 text-sm"
             numberOfLines={1}
@@ -36,9 +39,9 @@ const FollowRequestCard = ({ item, onAccept, onReject, actionType }) => {
         <Pressable
           onPress={() => onAccept(item)}
           disabled={disabled}
-          className={`w-9 h-9 rounded-full bg-primary items-center justify-center ${
-            disabled ? "opacity-60" : "active:opacity-80"
-          }`}
+          className={`w-9 h-9 rounded-full items-center justify-center ${disabled ? "opacity-60" : "active:opacity-80"
+            }`}
+          style={{ backgroundColor: colors.primary }}
         >
           {isAccepting ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
@@ -51,9 +54,8 @@ const FollowRequestCard = ({ item, onAccept, onReject, actionType }) => {
         <Pressable
           onPress={() => onReject(item)}
           disabled={disabled}
-          className={`w-9 h-9 rounded-full bg-white/10 border border-white/20 items-center justify-center ${
-            disabled ? "opacity-60" : "active:opacity-80"
-          }`}
+          className={`w-9 h-9 rounded-full bg-white/10 border border-white/20 items-center justify-center ${disabled ? "opacity-60" : "active:opacity-80"
+            }`}
         >
           {isRejecting ? (
             <ActivityIndicator size="small" color="#FFFFFF" />

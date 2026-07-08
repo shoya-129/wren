@@ -4,18 +4,19 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { BadgeCheck, User, UserMinus, X } from "lucide-react-native";
+import { VerifiedIcon as Verified, UserIcon as User, UserMinusIcon as UserMinus, XIcon as X } from "../lib/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   Text,
   View,
 } from "react-native";
 import api from "../utils/api";
+import { showToast } from "../utils/toast";
 import { getPaginatedData, getPaginationMeta } from "../utils/users";
+import colors from "../lib/colors.json";
 
 const UserConnectionsSheet = ({
   visible,
@@ -73,10 +74,7 @@ const UserConnectionsSheet = ({
         }
       } catch (e) {
         console.error(`Failed to load ${type}`, e);
-        Alert.alert(
-          "Load failed",
-          `Could not load ${title.toLowerCase()} right now.`,
-        );
+        showToast(`Could not load ${title.toLowerCase()} right now.`);
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -148,7 +146,7 @@ const UserConnectionsSheet = ({
       onListMutated?.({ type: "revoke", user: item });
     } catch (e) {
       console.error("Failed to revoke follower access", e);
-      Alert.alert("Revoke failed", "Could not revoke access right now.");
+      showToast("Could not revoke access right now.");
     } finally {
       setRevokingId(null);
     }
@@ -163,7 +161,7 @@ const UserConnectionsSheet = ({
         <View className="w-11 h-11 rounded-full bg-white/10 border border-white/15 items-center justify-center overflow-hidden">
           {item.avatar
             ? <Image source={{ uri: item.avatar }} className="w-full h-full" />
-            : <User size={18} color="#4F7DFF" strokeWidth={2} />}
+            : <User size={18} color={colors.primary} strokeWidth={2} />}
         </View>
         <View className="flex-1">
           <View className="flex-row items-center gap-1.5">
@@ -174,7 +172,7 @@ const UserConnectionsSheet = ({
               {item.name || item.username}
             </Text>
             {item.verified
-              ? <BadgeCheck size={18} color="#4F7DFF" strokeWidth={2.2} />
+              ? <Verified size={17.5} />
               : null}
           </View>
           <Text className="text-white/50 text-sm" numberOfLines={1}>
@@ -250,7 +248,7 @@ const UserConnectionsSheet = ({
         ListEmptyComponent={loading
           ? (
             <BottomSheetView className="items-center justify-center py-16">
-              <ActivityIndicator size="large" color="#4F7DFF" />
+              <ActivityIndicator size="large" color={colors.primary} />
             </BottomSheetView>
           )
           : (
@@ -263,7 +261,7 @@ const UserConnectionsSheet = ({
         ListFooterComponent={loadingMore
           ? (
             <View className="py-5 items-center">
-              <ActivityIndicator color="#4F7DFF" />
+              <ActivityIndicator color={colors.primary} />
             </View>
           )
           : <View className="h-8" />}

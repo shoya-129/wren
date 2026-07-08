@@ -2,11 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { ArrowLeft, Check, Lock, Mail, User } from "lucide-react-native";
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -19,8 +17,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import FloatingLabelInput from "../../components/FloatingLabelInput";
 import PasswordStrengthBar from "../../components/PasswordStrengthBar";
+import WrenIsland from "../../components/WrenIsland";
 import { useUser } from "../../context/UserContext";
 import { usePasswordStrength } from "../../hooks/usePasswordStrength";
+import colors from "../../lib/colors.json";
+import { ArrowLeftIcon, CheckIcon, LockIcon, MailIcon, ShieldAlertIcon, UserIcon, UserRoundIcon, UserRoundKeyIcon } from "../../lib/icons";
 import api, { setApiAuthToken } from "../../utils/api";
 import {
   createMasterKey,
@@ -34,18 +35,16 @@ function RequirementItem({ label, fulfilled }) {
   return (
     <View className="flex-row items-center mt-2.5">
       <View
-        className={`w-4 h-4 rounded-full items-center justify-center border transition-colors ${
-          fulfilled
-            ? "border-green-500 bg-green-500/30"
-            : "border-zinc-800 bg-zinc-950"
-        }`}
+        className={`w-4 h-4 rounded-full items-center justify-center border transition-colors ${fulfilled
+          ? "border-green-500 bg-green-500/30"
+          : "border-zinc-800 bg-zinc-950"
+          }`}
       >
-        {fulfilled && <Check size={8} color="#22C55E" />}
+        {fulfilled && <CheckIcon size={8} color="#22C55E" />}
       </View>
       <Text
-        className={`ml-2.5 text-sm transition-colors ${
-          fulfilled ? "text-green-500" : "text-zinc-500"
-        }`}
+        className={`ml-2.5 text-sm transition-colors ${fulfilled ? "text-green-500" : "text-zinc-500"
+          }`}
       >
         {label}
       </Text>
@@ -61,20 +60,42 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [islandConfig, setIslandConfig] = useState(null);
 
   const strength = usePasswordStrength(password);
 
   const handleSignup = async () => {
     if (isLoading) return;
+
     if (!username.trim() || !email.trim() || !password) {
-      Alert.alert("Invalid Input", "Please fill in all fields.");
+      const msg = "Please fill in all fields.";
+      const estimatedWidth = Math.min(320, Math.max(220, msg.length * 8 + 60));
+      setIslandConfig({
+        step1Text: msg,
+        step2Text: msg,
+        step1IconLeft: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
+        step2Icon: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
+        step1Width: estimatedWidth,
+        step2Width: estimatedWidth,
+        step1Timeout: 50,
+        step2Timeout: 3000,
+      });
       return;
     }
+
     if (strength.score < 2) {
-      Alert.alert(
-        "Weak Password",
-        "Please choose a stronger password (at least Fair) that satisfies the length and special character requirements.",
-      );
+      const msg = "Please choose a stronger password.";
+      const estimatedWidth = Math.min(320, Math.max(220, msg.length * 8 + 60));
+      setIslandConfig({
+        step1Text: msg,
+        step2Text: msg,
+        step1IconLeft: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
+        step2Icon: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
+        step1Width: estimatedWidth,
+        step2Width: estimatedWidth,
+        step1Timeout: 50,
+        step2Timeout: 3000,
+      });
       return;
     }
 
@@ -108,29 +129,47 @@ export default function Signup() {
         throw new Error("Missing token in register response");
       }
 
-      setApiAuthToken(accessToken);
-
-      await AsyncStorage.setItem("user", JSON.stringify(user));
-      await AsyncStorage.setItem("token", accessToken);
-
-      await SecureStore.setItemAsync("privateKey", privateKey);
-      await SecureStore.setItemAsync("feedKey", feedKey);
-      await SecureStore.setItemAsync("publicKey", publicKey);
-
-      await setSession({
-        user,
-        token: accessToken,
-        privateKey,
-        publicKey,
-        feedKey,
+      setIslandConfig({
+        step1Text: "Creating Account",
+        step2Text: "Account Created!",
+        step1IconLeft: <UserRoundIcon size={16} color={colors.primary} strokeWidth={2.8} />,
+        step1IconRight: <UserRoundKeyIcon size={16} color="#10B981" strokeWidth={3} />,
+        step2Icon: <LockIcon size={16} color="#10B981" strokeWidth={2.8} />,
+        step1Width: 200,
+        step2Width: 220,
+        step1Timeout: 600,
+        step2Timeout: 1400,
+        onComplete: async () => {
+          setApiAuthToken(accessToken);
+          await AsyncStorage.setItem("user", JSON.stringify(user));
+          await AsyncStorage.setItem("token", accessToken);
+          await SecureStore.setItemAsync("privateKey", privateKey);
+          await SecureStore.setItemAsync("feedKey", feedKey);
+          await SecureStore.setItemAsync("publicKey", publicKey);
+          await setSession({
+            user,
+            token: accessToken,
+            privateKey,
+            publicKey,
+            feedKey,
+          });
+          router.replace("/(tabs)");
+        }
       });
-      router.replace("/(tabs)");
     } catch (e) {
       console.error("Signup failed", e);
-      Alert.alert(
-        "Sign up Failed",
-        e?.response?.data?.message || "Please try again in a moment.",
-      );
+      const errMsg = e?.response?.data?.message || "Registration failed. Please try again.";
+      const estimatedWidth = Math.min(320, Math.max(220, errMsg.length * 8 + 60));
+      setIslandConfig({
+        step1Text: errMsg,
+        step2Text: errMsg,
+        step1IconLeft: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
+        step2Icon: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
+        step1Width: estimatedWidth,
+        step2Width: estimatedWidth,
+        step1Timeout: 50,
+        step2Timeout: 3000,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -161,7 +200,7 @@ export default function Signup() {
                 onPress={() => router.back()}
                 className="w-10 h-10 items-center justify-center rounded-full bg-zinc-900 border border-zinc-800 self-start active:opacity-75"
               >
-                <ArrowLeft size={20} color="#FFFFFF" />
+                <ArrowLeftIcon size={20} color="#FFFFFF" />
               </Pressable>
 
               <View className="my-auto py-6">
@@ -185,7 +224,7 @@ export default function Signup() {
                     label="Username"
                     value={username}
                     onChangeText={setUsername}
-                    leadingIcon={User}
+                    leadingIcon={UserIcon}
                     autoCapitalize="none"
                   />
 
@@ -193,7 +232,7 @@ export default function Signup() {
                     label="Email Address"
                     value={email}
                     onChangeText={setEmail}
-                    leadingIcon={Mail}
+                    leadingIcon={MailIcon}
                     autoCapitalize="none"
                     keyboardType="email-address"
                   />
@@ -202,7 +241,7 @@ export default function Signup() {
                     label="Password"
                     value={password}
                     onChangeText={setPassword}
-                    leadingIcon={Lock}
+                    leadingIcon={LockIcon}
                     secureTextEntry={true}
                     onFocus={() => {
                       setTimeout(() => {
@@ -250,10 +289,10 @@ export default function Signup() {
                     handleSignup()
                     Keyboard.dismiss()
                   }}
-                  disabled={isLoading}
-                  className={`h-12 rounded-full bg-primary items-center justify-center shadow-lg shadow-primary/20 ${
-                    isLoading ? "opacity-70" : "active:opacity-90"
-                  }`}
+                  disabled={isLoading || !!islandConfig}
+                  className={`h-12 rounded-full items-center justify-center ${isLoading || !!islandConfig ? "opacity-70" : "active:opacity-90"
+                    }`}
+                  style={{ backgroundColor: colors.primary }}
                 >
                   {isLoading ? <ActivityIndicator color="#FFFFFF" /> : (
                     <Text
@@ -274,13 +313,24 @@ export default function Signup() {
                     onPress={() => router.push("/login")}
                     className="p-1"
                   >
-                    <Text className="text-primary text-sm">Log In</Text>
+                    <Text style={{ color: colors.primary }} className="text-sm">Log In</Text>
                   </Pressable>
                 </View>
               </View>
             </View>
           </ScrollView>
         </SafeAreaView>
+        {islandConfig && (
+          <WrenIsland
+            {...islandConfig}
+            onComplete={async () => {
+              if (islandConfig.onComplete) {
+                await islandConfig.onComplete();
+              }
+              setIslandConfig(null);
+            }}
+          />
+        )}
       </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
   );

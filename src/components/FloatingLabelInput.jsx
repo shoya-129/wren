@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
-import { View, TextInput, Animated, Pressable, Text } from "react-native";
-import { Eye, EyeOff } from "lucide-react-native";
+import { useEffect, useState } from "react";
+import { Animated, Pressable, Text, TextInput, View } from "react-native";
+import { EyeIcon as Eye, EyeOffIcon as EyeOff } from "../lib/icons";
+import colors from "../lib/colors.json";
 
 export default function FloatingLabelInput({
   label,
@@ -50,16 +51,16 @@ export default function FloatingLabelInput({
     outputRange: ["rgba(0, 0, 0, 0)", "rgba(0, 0, 0, 0)", "#000000"],
   });
 
-  const labelColor = isFocused ? "#4F7DFF" : "#6E6C68";
-  const borderClass = isFocused ? "border-primary" : "border-zinc-800";
+  const labelColor = isFocused ? colors.primary : "#6E6C68";
 
   return (
     <View
-      className={`relative h-14 w-full border rounded-xl flex-row items-center px-4 mb-4 bg-zinc-900/40 ${borderClass}`}
+      className="relative h-14 w-full border rounded-xl flex-row items-center px-4 mb-4 bg-zinc-900/40"
+      style={{ borderColor: isFocused ? colors.primary : "#27272a" }}
     >
       {LeadingIcon && (
         <View className="mr-3 justify-center items-center">
-          <LeadingIcon size={20} color={isFocused ? "#4F7DFF" : "#6E6C68"} />
+          <LeadingIcon size={20} color={isFocused ? colors.primary : "#6E6C68"} />
         </View>
       )}
 
@@ -107,9 +108,9 @@ export default function FloatingLabelInput({
           className="ml-3 p-1 active:opacity-75"
         >
           {isPasswordVisible ? (
-            <EyeOff size={20} color={isFocused ? "#4F7DFF" : "#6E6C68"} />
+            <EyeOff size={20} color={isFocused ? colors.primary : "#6E6C68"} />
           ) : (
-            <Eye size={20} color={isFocused ? "#4F7DFF" : "#6E6C68"} />
+            <Eye size={20} color={isFocused ? colors.primary : "#6E6C68"} />
           )}
         </Pressable>
       )}

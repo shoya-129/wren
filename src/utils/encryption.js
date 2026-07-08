@@ -16,6 +16,8 @@ import {
   crypto_box_seal_open
 } from "react-native-libsodium";
 import { fromByteArray, toByteArray } from "base64-js";
+import { AES } from "@stablelib/aes";
+import { GCM } from "@stablelib/gcm";
 
 
 
@@ -93,7 +95,21 @@ export async function encryptData(content, keyBase64) {
 }
 
 export async function decryptData(encryptedBase64, keyBase64) {
+  if (!encryptedBase64) return "";
   await ready;
+
+  // Automatically decrypt AES-256-GCM binary file URL from Cloudinary (or local uri)
+  if (
+    typeof encryptedBase64 === "string" &&
+    (encryptedBase64.startsWith("http://") ||
+      encryptedBase64.startsWith("https://") ||
+      encryptedBase64.startsWith("file://") ||
+      encryptedBase64.startsWith("content://") ||
+      encryptedBase64.endsWith(".wren") ||
+      encryptedBase64.endsWith(".enc"))
+  ) {
+    return decryptMediaBinary(encryptedBase64, keyBase64);
+  }
 
   const key = toByteArray(keyBase64);
   const combined = toByteArray(encryptedBase64);
@@ -133,4 +149,77 @@ export async function decryptAsymmetric(encryptedBase64, publicKeyBase64, privat
 
   const decryptedBytes = crypto_box_seal_open(ciphertext, publicKey, privateKey);
   return to_string(decryptedBytes);
+}
+
+export async function encryptMediaBinary(base64Image, keyBase64) {
+  await ready;
+
+  const keyBytes = toByteArray(keyBase64);
+  const imageBytes = toByteArray(base64Image);
+  const iv = randombytes_buf(12);
+
+  const aes = new AES(keyBytes);
+  const gcm = new GCM(aes);
+
+  const sealed = gcm.seal(iv, imageBytes);
+
+  const combined = new Uint8Array(iv.length + sealed.length);
+  combined.set(iv, 0);
+  combined.set(sealed, iv.length);
+
+  return combined;
+}
+
+const mediaCache = new Map();
+
+export async function decryptMediaBinary(encryptedBase64OrUrl, keyBase64) {
+  const cacheKey = `${encryptedBase64OrUrl}_${keyBase64}`;
+  if (mediaCache.has(cacheKey)) {
+    return mediaCache.get(cacheKey);
+  }
+
+  await ready;
+
+  const keyBytes = toByteArray(keyBase64);
+  let combined;
+
+  if (typeof encryptedBase64OrUrl === "string" && (encryptedBase64OrUrl.startsWith("http://") || encryptedBase64OrUrl.startsWith("https://"))) {
+    const res = await fetch(encryptedBase64OrUrl);
+    const arrayBuffer = await res.arrayBuffer();
+    combined = new Uint8Array(arrayBuffer);
+  } else {
+    combined = toByteArray(encryptedBase64OrUrl);
+  }
+
+  if (combined.length < 12 + 16) {
+    throw new Error("Invalid encrypted media data length");
+  }
+
+  const iv = combined.slice(0, 12);
+  const sealed = combined.slice(12);
+
+  const aes = new AES(keyBytes);
+  const gcm = new GCM(aes);
+
+  const decryptedBytes = gcm.open(iv, sealed);
+  if (!decryptedBytes) {
+    throw new Error("AES-256-GCM Decryption/Authentication failed");
+  }
+
+  // Detect mime type
+  let mime = "image/jpeg";
+  if (decryptedBytes.length > 4) {
+    if (decryptedBytes[0] === 0x89 && decryptedBytes[1] === 0x50 && decryptedBytes[2] === 0x4E && decryptedBytes[3] === 0x47) {
+      mime = "image/png";
+    } else if (decryptedBytes[0] === 0xFF && decryptedBytes[1] === 0xD8 && decryptedBytes[2] === 0xFF) {
+      mime = "image/jpeg";
+    } else if (decryptedBytes[0] === 0x47 && decryptedBytes[1] === 0x49 && decryptedBytes[2] === 0x46 && decryptedBytes[3] === 0x38) {
+      mime = "image/gif";
+    }
+  }
+
+  const base64String = fromByteArray(decryptedBytes);
+  const dataUri = `data:${mime};base64,${base64String}`;
+  mediaCache.set(cacheKey, dataUri);
+  return dataUri;
 }

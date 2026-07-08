@@ -1,17 +1,4 @@
 import { useRouter } from "expo-router";
-import {
-  BadgeCheck,
-  Lock,
-  MessageCircle,
-  MoreVertical,
-  Repeat2,
-  Share2,
-  ThumbsDown,
-  ThumbsUp,
-  User,
-  UserCheck,
-  UserPlus,
-} from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -22,7 +9,21 @@ import {
   View,
 } from "react-native";
 import { useUser } from "../context/UserContext";
+import {
+  VerifiedIcon as Verified,
+  LockIcon as Lock,
+  MessageCircleIcon as MessageCircle,
+  MoreVerticalIcon as MoreVertical,
+  Repeat2Icon as Repeat2,
+  Share2Icon as Share2,
+  ThumbsDownIcon as ThumbsDown,
+  ThumbsUpIcon as ThumbsUp,
+  UserCheckIcon as UserCheck,
+  UserPlusIcon as UserPlus,
+  UserRoundIcon as UserRound
+} from "../lib/icons";
 import api from "../utils/api";
+import colors from "../lib/colors.json";
 import { getEntityUid, getFollowStatus } from "../utils/followStatus";
 
 const ICON_COLOR = "rgb(255 255 255 / 0.8)";
@@ -241,7 +242,7 @@ const PostCard = ({
             )
             : (
               <View className="h-10 w-10 rounded-full bg-white/10 border border-white/20 items-center justify-center">
-                <User size={28} color="#4F7DFF" strokeWidth={2.2} />
+                <UserRound size={28} color={colors.primary} strokeWidth={2.2} />
               </View>
             )}
 
@@ -254,7 +255,7 @@ const PostCard = ({
                 {author.name || author.username || "Wren User"}
               </Text>
               {author.verified && (
-                <BadgeCheck size={16} color="#4F7DFF" strokeWidth={2} />
+                <Verified size={16.5} />
               )}
             </View>
             <Text className="text-xs text-white/60" numberOfLines={1}>
@@ -268,9 +269,9 @@ const PostCard = ({
           <Pressable
             onPress={handleFollowToggle}
             disabled={loadingAction}
-            className={`py-1.5 px-3.5 rounded-full flex-row items-center gap-1 ${
-              isPending ? "bg-white/10 border border-white/20" : "bg-primary"
-            }`}
+            className={`py-1.5 px-3.5 rounded-full flex-row items-center gap-1 ${isPending ? "bg-white/10 border border-white/20" : ""
+              }`}
+            style={!isPending ? { backgroundColor: colors.primary } : undefined}
           >
             {loadingAction
               ? <ActivityIndicator size="small" color="#FFFFFF" />
@@ -280,9 +281,8 @@ const PostCard = ({
                     ? <UserCheck size={12} color="#A1A1AA" strokeWidth={2.5} />
                     : <UserPlus size={12} color="#FFFFFF" strokeWidth={2.5} />}
                   <Text
-                    className={`text-xs ${
-                      isPending ? "text-white/40" : "text-white"
-                    }`}
+                    className={`text-xs ${isPending ? "text-white/40" : "text-white"
+                      }`}
                   >
                     {isPending ? "Requested" : "Follow"}
                   </Text>
@@ -390,11 +390,10 @@ const PostCard = ({
                     />
                   </View>
                   <Text
-                    className={`text-xs ${
-                      isReposted
-                        ? "text-emerald-500 font-semibold"
-                        : "text-white/50"
-                    }`}
+                    className={`text-xs ${isReposted
+                      ? "text-emerald-500 font-semibold"
+                      : "text-white/50"
+                      }`}
                   >
                     {repostsCount}
                   </Text>
@@ -420,13 +419,12 @@ const PostCard = ({
             >
               <ThumbsUp
                 size={18}
-                color={isLiked ? "#4F7DFF" : ICON_COLOR}
-                fill={isLiked ? "#4F7DFF" : "none"}
+                color={isLiked ? colors.primary : ICON_COLOR}
+                fill={isLiked ? colors.primary : "none"}
               />
               <Text
-                className={`text-xs ${
-                  isLiked ? "text-primary font-semibold" : "text-white/50"
-                }`}
+                className="text-xs"
+                style={isLiked ? { color: colors.primary, fontWeight: "600" } : { color: "rgba(255,255,255,0.5)" }}
               >
                 {likesCount}
               </Text>

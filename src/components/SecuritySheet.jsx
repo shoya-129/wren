@@ -1,12 +1,4 @@
 import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
-import {
-  Key,
-  Lock,
-  ShieldCheck,
-  UserMinus,
-  UserPlus,
-  UserX,
-} from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,6 +8,23 @@ import {
   Text,
   View,
 } from "react-native";
+import colors from "../lib/colors.json";
+import {
+  KeyIcon as Key,
+  LockIcon as Lock,
+  ShieldCheckIcon as ShieldCheck,
+  UserMinusIcon as UserMinus,
+  UserPlusIcon as UserPlus,
+  UserXIcon as UserX,
+} from "../lib/icons";
+import { Verified } from "lucide-react-native";
+
+const hexToRgba = (hex, opacity) => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+};
 
 const ORBIT_SIZE = 200;
 const ICON_SIZE = 40;
@@ -27,8 +36,8 @@ const CENTER = ORBIT_SIZE / 2;
 const orbitIcons = [
   {
     Icon: UserPlus,
-    color: "#4F7DFF",
-    backgroundColor: "rgba(59,130,246,0.1)",
+    color: colors.primary,
+    backgroundColor: hexToRgba(colors.primary, 0.1),
     angle: -90,
   },
   {
@@ -178,9 +187,9 @@ const SecuritySheet = ({
             >
               <View
                 className="h-14 w-14 rounded-full items-center justify-center"
-                style={{ backgroundColor: "rgba(79,125,255,0.18)" }}
+                style={{ backgroundColor: hexToRgba(colors.primary, 0.18) }}
               >
-                <ShieldCheck size={26} color="#4F7DFF" strokeWidth={2.2} />
+                <Verified size={26} color={colors.primary} strokeWidth={2.2} />
               </View>
             </View>
           </View>

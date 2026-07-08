@@ -10,6 +10,7 @@ import {
 } from "react-native-reanimated";
 import "../../global.css";
 import { UserProvider, useUser } from "../context/UserContext";
+import colors from "../lib/colors.json";
 
 configureReanimatedLogger({
   level: ReanimatedLogLevel.warn,
@@ -24,7 +25,7 @@ function RootNavigator() {
   if (isHydrating) {
     return (
       <View className="flex-1 bg-black items-center justify-center">
-        <ActivityIndicator size="large" color="#4F7DFF" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
