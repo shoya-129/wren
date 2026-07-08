@@ -17,8 +17,6 @@ export default function SharedPostScreen() {
     privateKey,
     publicKey,
     feedKey,
-    feedKeysCache,
-    cacheFeedKey,
     isHydrating,
   } = useUser();
 
@@ -32,19 +30,15 @@ export default function SharedPostScreen() {
       return decryptPostOrReply(rawPost, {
         currentUserUid: user?.uid,
         feedKey,
-        feedKeysCache,
         publicKey,
         privateKey,
-        cacheFeedKey,
       });
     },
     [
       user?.uid,
       feedKey,
-      feedKeysCache,
       publicKey,
       privateKey,
-      cacheFeedKey,
     ],
   );
 
@@ -127,6 +121,7 @@ export default function SharedPostScreen() {
       ) : post ? (
         <View className="flex-1 px-4">
           <ThreadBottomSheet
+            panDownClose={false}
             visible={threadVisible}
             post={post}
             onClose={handleCloseThread}

@@ -84,7 +84,6 @@ export function UserProvider({ children }) {
   const [publicKey, setPublicKey] = useState(null);
   const [feedKey, setFeedKey] = useState(null);
 
-  const [feedKeysCache, setFeedKeysCache] = useState({});
   const [followingStatus, setFollowingStatus] = useState({});
   const [activities, setActivities] = useState([]);
 
@@ -92,6 +91,9 @@ export function UserProvider({ children }) {
   const [likedPosts, setLikedPosts] = useState({});
   const [dislikedPosts, setDislikedPosts] = useState({});
   const [repostedPosts, setRepostedPosts] = useState({});
+
+  // No-op to avoid any feed key caching; legacy references cleared here intentionally
+  const setFeedKeysCache = () => {};
 
   const isLoggedIn = !!user && !!token;
 
@@ -217,14 +219,6 @@ export function UserProvider({ children }) {
     return () => {
       setApiUnauthorizedHandler(null);
     };
-  }, []);
-
-  const cacheFeedKey = useCallback((uid, key) => {
-    if (!uid || !key) return;
-    setFeedKeysCache((prev) => {
-      if (prev[uid] === key) return prev;
-      return { ...prev, [uid]: key };
-    });
   }, []);
 
   const updateFollowingStatus = useCallback((uid, status) => {
@@ -480,8 +474,6 @@ export function UserProvider({ children }) {
       setSession,
       updateUser,
       logout,
-      feedKeysCache,
-      cacheFeedKey,
       followingStatus,
       updateFollowingStatus,
       setFollowingStatus,
@@ -503,8 +495,6 @@ export function UserProvider({ children }) {
       publicKey,
       feedKey,
       setSession,
-      feedKeysCache,
-      cacheFeedKey,
       updateUser,
       updateFollowingStatus,
       followingStatus,

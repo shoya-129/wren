@@ -60,19 +60,21 @@ export function getFollowStatus(
 ) {
   const targetUid = getEntityUid(entity);
 
-  if (localStatus === "accepted") {
-    return localStatus;
-  }
+  // 1) Local overrides: reflect the most recent user action immediately
+  if (localStatus === "none") return "none";
+  if (localStatus === "accepted") return "accepted";
+  if (localStatus === "pending") return "pending";
 
+  // 2) Trust explicit server-provided statuses next
   const stringStatus =
     normalizeStringStatus(entity?.followStatus) ??
     normalizeStringStatus(entity?.followingStatus) ??
     normalizeStringStatus(entity?.relationshipStatus) ??
     normalizeStringStatus(entity?.followRequestStatus) ??
     normalizeStringStatus(entity?.relationship?.status);
-
   if (stringStatus) return stringStatus;
 
+  // 3) Infer from booleans/keys only when nothing else is known
   if (
     entity?.isFollowing === true ||
     entity?.isFollowed === true ||
@@ -108,8 +110,6 @@ export function getFollowStatus(
   ) {
     return "pending";
   }
-
-  if (localStatus === "pending") return "pending";
 
   return localStatus || "none";
 }

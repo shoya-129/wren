@@ -16,10 +16,8 @@ export async function decryptPostOrReply(item, options = {}) {
   const {
     currentUserUid = null,
     feedKey = null,
-    feedKeysCache = {},
     publicKey = null,
     privateKey = null,
-    cacheFeedKey = null,
     updateFollowingStatus = null,
     parentFeedKey = null,
   } = options;
@@ -29,11 +27,9 @@ export async function decryptPostOrReply(item, options = {}) {
   const encryptedFeedKey = getPostEncryptedFeedKey(item);
   let postFeedKey = null;
 
-  // Key resolution
+  // Key resolution: own posts use own feedKey, otherwise decrypt from post each time
   if (authorId && authorId === currentUserUid && feedKey) {
     postFeedKey = feedKey;
-  } else if (authorId && feedKeysCache[authorId]) {
-    postFeedKey = feedKeysCache[authorId];
   } else if (encryptedFeedKey && publicKey && privateKey) {
     try {
       postFeedKey = await decryptAsymmetric(
@@ -41,9 +37,6 @@ export async function decryptPostOrReply(item, options = {}) {
         publicKey,
         privateKey,
       );
-      if (authorId && cacheFeedKey) {
-        cacheFeedKey(authorId, postFeedKey);
-      }
       if (authorId && updateFollowingStatus) {
         updateFollowingStatus(authorId, "accepted");
       }

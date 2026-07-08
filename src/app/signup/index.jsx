@@ -60,7 +60,12 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [islandConfig, setIslandConfig] = useState(null);
+  const [islandState, setIslandState] = useState({
+    visible: false,
+    status: "loading",
+    errorText: "",
+    onComplete: null,
+  });
 
   const strength = usePasswordStrength(password);
 
@@ -69,39 +74,35 @@ export default function Signup() {
 
     if (!username.trim() || !email.trim() || !password) {
       const msg = "Please fill in all fields.";
-      const estimatedWidth = Math.min(320, Math.max(220, msg.length * 8 + 60));
-      setIslandConfig({
-        step1Text: msg,
-        step2Text: msg,
-        step1IconLeft: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
-        step2Icon: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
-        step1Width: estimatedWidth,
-        step2Width: estimatedWidth,
-        step1Timeout: 50,
-        step2Timeout: 3000,
+      setIslandState({
+        visible: true,
+        status: "error",
+        errorText: msg,
+        onComplete: () => setIslandState((prev) => ({ ...prev, visible: false })),
       });
       return;
     }
 
     if (strength.score < 2) {
       const msg = "Please choose a stronger password.";
-      const estimatedWidth = Math.min(320, Math.max(220, msg.length * 8 + 60));
-      setIslandConfig({
-        step1Text: msg,
-        step2Text: msg,
-        step1IconLeft: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
-        step2Icon: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
-        step1Width: estimatedWidth,
-        step2Width: estimatedWidth,
-        step1Timeout: 50,
-        step2Timeout: 3000,
+      setIslandState({
+        visible: true,
+        status: "error",
+        errorText: msg,
+        onComplete: () => setIslandState((prev) => ({ ...prev, visible: false })),
       });
       return;
     }
 
-    try {
-      setIsLoading(true);
+    setIsLoading(true);
+    setIslandState({
+      visible: true,
+      status: "loading",
+      errorText: "",
+      onComplete: null,
+    });
 
+    try {
       const { masterKey, salt } = await createMasterKey(password);
       const { publicKey, privateKey } = await generateKeyPair(masterKey);
       const feedKey = await generateFeedKey();
@@ -129,17 +130,12 @@ export default function Signup() {
         throw new Error("Missing token in register response");
       }
 
-      setIslandConfig({
-        step1Text: "Creating Account",
-        step2Text: "Account Created!",
-        step1IconLeft: <UserRoundIcon size={16} color={colors.primary} strokeWidth={2.8} />,
-        step1IconRight: <UserRoundKeyIcon size={16} color="#10B981" strokeWidth={3} />,
-        step2Icon: <LockIcon size={16} color="#10B981" strokeWidth={2.8} />,
-        step1Width: 200,
-        step2Width: 220,
-        step1Timeout: 600,
-        step2Timeout: 1400,
+      setIslandState({
+        visible: true,
+        status: "success",
+        errorText: "",
         onComplete: async () => {
+          setIslandState((prev) => ({ ...prev, visible: false }));
           setApiAuthToken(accessToken);
           await AsyncStorage.setItem("user", JSON.stringify(user));
           await AsyncStorage.setItem("token", accessToken);
@@ -154,21 +150,18 @@ export default function Signup() {
             feedKey,
           });
           router.replace("/(tabs)");
-        }
+        },
       });
     } catch (e) {
       console.error("Signup failed", e);
       const errMsg = e?.response?.data?.message || "Registration failed. Please try again.";
-      const estimatedWidth = Math.min(320, Math.max(220, errMsg.length * 8 + 60));
-      setIslandConfig({
-        step1Text: errMsg,
-        step2Text: errMsg,
-        step1IconLeft: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
-        step2Icon: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
-        step1Width: estimatedWidth,
-        step2Width: estimatedWidth,
-        step1Timeout: 50,
-        step2Timeout: 3000,
+      setIslandState({
+        visible: true,
+        status: "error",
+        errorText: errMsg,
+        onComplete: () => {
+          setIslandState((prev) => ({ ...prev, visible: false }));
+        },
       });
     } finally {
       setIsLoading(false);
@@ -289,8 +282,8 @@ export default function Signup() {
                     handleSignup()
                     Keyboard.dismiss()
                   }}
-                  disabled={isLoading || !!islandConfig}
-                  className={`h-12 rounded-full items-center justify-center ${isLoading || !!islandConfig ? "opacity-70" : "active:opacity-90"
+                  disabled={isLoading || islandState.visible}
+                  className={`h-12 rounded-full items-center justify-center ${isLoading || islandState.visible ? "opacity-70" : "active:opacity-90"
                     }`}
                   style={{ backgroundColor: colors.primary }}
                 >
@@ -320,15 +313,20 @@ export default function Signup() {
             </View>
           </ScrollView>
         </SafeAreaView>
-        {islandConfig && (
+        {islandState.visible && (
           <WrenIsland
-            {...islandConfig}
-            onComplete={async () => {
-              if (islandConfig.onComplete) {
-                await islandConfig.onComplete();
-              }
-              setIslandConfig(null);
-            }}
+            status={islandState.status}
+            step1Text="Creating Account"
+            step2Text="Account Created!"
+            step1IconLeft={<UserRoundIcon size={16} color={colors.primary} strokeWidth={2.8} />}
+            step1IconRight={<UserRoundKeyIcon size={16} color="#10B981" strokeWidth={3} />}
+            step2Icon={<LockIcon size={16} color="#10B981" strokeWidth={2.8} />}
+            errorIcon={<ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />}
+            errorText={islandState.errorText}
+            step1Width={200}
+            step2Width={220}
+            errorWidth={Math.min(320, Math.max(220, islandState.errorText.length * 8 + 60))}
+            onComplete={islandState.onComplete}
           />
         )}
       </KeyboardAvoidingView>

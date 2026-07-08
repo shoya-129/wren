@@ -14,9 +14,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "../../context/UserContext";
 import { CompassIcon as Compass, SearchIcon as Search, UserCheckIcon as UserCheck, UserPlusIcon as UserPlus, UserRoundIcon as UserRound, VerifiedIcon as Verified } from "../../lib/icons";
 import api from "../../utils/api";
-import { cacheProfiles } from "../../utils/cache";
+import { cacheProfiles, updateCachedProfile } from "../../utils/cache";
 import colors from "../../lib/colors.json";
-import { getEntityUid } from "../../utils/followStatus";
+import { getEntityUid, getFollowStatus } from "../../utils/followStatus";
 import { showToast } from "../../utils/toast";
 import { getPaginatedData } from "../../utils/users";
 
@@ -140,16 +140,6 @@ export default function ExploreScreen() {
     setActionInProgress((prev) => ({ ...prev, [uid]: true }));
     updateFollowingStatus(uid, nextStatus);
 
-    if (nextStatus === "pending") {
-      addActivity(
-        "follow_request_sent",
-        username,
-        `You requested to follow @${username}`,
-      );
-    } else {
-      addActivity("unfollowed", username, `You unfollowed @${username}`);
-    }
-
     try {
       const requestPath =
         currentStatus === "none" ? "/user/follow" : "/user/unfollow";
@@ -167,14 +157,24 @@ export default function ExploreScreen() {
         }
       }
 
+      let confirmedStatus = "none";
       if (currentStatus === "none") {
-        const confirmedStatus =
+        confirmedStatus =
           res?.data?.follow?.status === "accepted" ? "accepted" : "pending";
         updateFollowingStatus(uid, confirmedStatus);
+
+        addActivity(
+          "follow_request_sent",
+          username,
+          `You requested to follow @${username}`,
+        );
       } else {
         updateFollowingStatus(uid, "none");
+
+        addActivity("unfollowed", username, `You unfollowed @${username}`);
       }
 
+      await updateCachedProfile(uid, { followStatus: confirmedStatus }).catch(() => {});
 
     } catch (e) {
       console.error(`Error toggling follow for ${username}:`, e);
@@ -209,7 +209,11 @@ export default function ExploreScreen() {
   });
 
   const renderUserItem = ({ item }) => {
-    const status = followingStatus[item.uid] || "none";
+    const status = getFollowStatus(
+      item,
+      followingStatus[item.uid] || "none",
+      currentUser,
+    );
     const isPending = status === "pending";
     const isAccepted = status === "accepted";
     const loading = actionInProgress[item.uid];

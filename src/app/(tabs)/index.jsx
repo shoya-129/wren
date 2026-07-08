@@ -312,7 +312,7 @@ export default function HomeScreen() {
             step2Text="Encrypted & Published"
             step1IconLeft={<FileText size={16} color={colors.primary} strokeWidth={2.8} />}
             step1IconRight={<ImageIcon size={16} color="#10B981" strokeWidth={2.8} />}
-            step2Icon={<Lock size={15} color="#8B5CF6" strokeWidth={3} />}
+            step2Icon={<Lock size={15} color="#10B981" strokeWidth={3} />}
             step1Width={220}
             step2Width={240}
             onComplete={() => {

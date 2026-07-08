@@ -12,8 +12,16 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import FollowRequestCard from "../../components/FollowRequestCard";
 import SecurityActivityCard from "../../components/SecurityActivityCard";
+import WrenIsland from "../../components/WrenIsland";
 import { useUser } from "../../context/UserContext";
-import { BellIcon as Bell } from "../../lib/icons";
+import { updateCachedProfile } from "../../utils/cache";
+import {
+  BellIcon,
+  KeyIcon,
+  LockIcon,
+  UserCheckIcon,
+  ShieldAlertIcon,
+} from "../../lib/icons";
 import api from "../../utils/api";
 import colors from "../../lib/colors.json";
 import { encryptAsymmetric } from "../../utils/encryption";
@@ -26,6 +34,19 @@ export default function NotificationsScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [actionInProgress, setActionInProgress] = useState({});
+  const [islandState, setIslandState] = useState({
+    visible: false,
+    status: "loading",
+    step1Text: "",
+    step2Text: "",
+    step1IconLeft: null,
+    step1IconRight: null,
+    step2Icon: null,
+    step1Width: 220,
+    step2Width: 270,
+    errorText: "",
+    onComplete: null,
+  });
 
   // 1. Load cached follow requests on mount
   useEffect(() => {
@@ -97,11 +118,19 @@ export default function NotificationsScreen() {
       return updated;
     });
 
-    addActivity(
-      "follow_request_accepted",
-      username,
-      `You accepted follow request from @${username} & shared encrypted feed key`,
-    );
+    setIslandState({
+      visible: true,
+      status: "loading",
+      step1Text: "Securing feed key...",
+      step2Text: "Key shared with the follower!",
+      step1IconLeft: <KeyIcon size={14} color="#10B981" strokeWidth={2.5} />,
+      step1IconRight: <LockIcon size={14} color={colors.comain} strokeWidth={2.5} />,
+      step2Icon: <UserCheckIcon size={14} color={colors.primary} strokeWidth={2.5} />,
+      step1Width: 220,
+      step2Width: 270,
+      errorText: "",
+      onComplete: () => setIslandState((prev) => ({ ...prev, visible: false })),
+    });
 
     try {
       const encryptedFeedKey = await encryptAsymmetric(feedKey, publicKey);
@@ -109,6 +138,19 @@ export default function NotificationsScreen() {
         followerId,
         encryptedFeedKey,
       });
+
+      addActivity(
+        "follow_request_accepted",
+        username,
+        `You accepted follow request from @${username} & shared encrypted feed key`,
+      );
+
+      await updateCachedProfile(followerId, {}).catch(() => {});
+
+      setIslandState((prev) => ({
+        ...prev,
+        status: "success",
+      }));
     } catch (err) {
       console.error("Error accepting follow request:", err);
       setRequests(originalRequests);
@@ -116,7 +158,19 @@ export default function NotificationsScreen() {
         "cached_follow_requests",
         JSON.stringify(originalRequests),
       ).catch(() => { });
-      showToast(`Could not accept @${username}'s follow request.`);
+
+      addActivity(
+        "follow_request_accept_failed",
+        username,
+        `Failed to accept follow request from @${username}`,
+      );
+
+      const errMsg = `Could not accept @${username}'s follow request.`;
+      setIslandState((prev) => ({
+        ...prev,
+        status: "error",
+        errorText: errMsg,
+      }));
     } finally {
       setActionInProgress((prev) => ({ ...prev, [followerId]: null }));
     }
@@ -138,14 +192,14 @@ export default function NotificationsScreen() {
       return updated;
     });
 
-    addActivity(
-      "follow_request_rejected",
-      username,
-      `You rejected follow request from @${username}`,
-    );
-
     try {
       await api.post("/user/follow/reject", { followerId });
+
+      addActivity(
+        "follow_request_rejected",
+        username,
+        `You rejected follow request from @${username}`,
+      );
     } catch (e) {
       console.error("Error rejecting follow request:", e);
       setRequests(originalRequests);
@@ -153,6 +207,13 @@ export default function NotificationsScreen() {
         "cached_follow_requests",
         JSON.stringify(originalRequests),
       ).catch(() => { });
+
+      addActivity(
+        "follow_request_reject_failed",
+        username,
+        `Failed to reject follow request from @${username}`,
+      );
+
       showToast(`Could not reject @${username}'s follow request.`);
     } finally {
       setActionInProgress((prev) => ({ ...prev, [followerId]: null }));
@@ -175,7 +236,7 @@ export default function NotificationsScreen() {
       <View className="flex-1 px-6 pt-4">
         {/* Header */}
         <View className="flex-row items-center gap-2 mb-6">
-          <Bell size={22} color={colors.primary} strokeWidth={2} />
+          <BellIcon size={22} color={colors.primary} strokeWidth={2} />
           <Text
             style={{ fontFamily: "WrenBold" }}
             className="text-white text-2xl"
@@ -242,6 +303,23 @@ export default function NotificationsScreen() {
             </View>
           }
         />
+
+        {islandState.visible && (
+          <WrenIsland
+            status={islandState.status}
+            step1Text={islandState.step1Text}
+            step2Text={islandState.step2Text}
+            step1IconLeft={islandState.step1IconLeft}
+            step1IconRight={islandState.step1IconRight}
+            step2Icon={islandState.step2Icon}
+            errorIcon={<ShieldAlertIcon size={14} color="#EF4444" strokeWidth={2.5} />}
+            errorText={islandState.errorText}
+            step1Width={islandState.step1Width}
+            step2Width={islandState.step2Width}
+            errorWidth={300}
+            onComplete={islandState.onComplete}
+          />
+        )}
       </View>
     </SafeAreaView>
   );

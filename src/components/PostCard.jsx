@@ -25,6 +25,7 @@ import {
 import api from "../utils/api";
 import colors from "../lib/colors.json";
 import { getEntityUid, getFollowStatus } from "../utils/followStatus";
+import { updateCachedProfile } from "../utils/cache";
 
 const ICON_COLOR = "rgb(255 255 255 / 0.8)";
 const ICON_HIT_CLASS =
@@ -174,20 +175,6 @@ const PostCard = ({
     setLoadingAction(true);
     updateFollowingStatus(authorId, nextStatus);
 
-    if (nextStatus === "pending") {
-      addActivity(
-        "follow_request_sent",
-        author.username,
-        `You requested to follow @${author.username}`,
-      );
-    } else {
-      addActivity(
-        "unfollowed",
-        author.username,
-        `You unfollowed @${author.username}`,
-      );
-    }
-
     try {
       const requestPath = currentStatus === "none"
         ? "/user/follow"
@@ -206,14 +193,29 @@ const PostCard = ({
         }
       }
 
+      let confirmedStatus = "none";
       if (currentStatus === "none") {
-        const confirmedStatus = res?.data?.follow?.status === "accepted"
+        confirmedStatus = res?.data?.follow?.status === "accepted"
           ? "accepted"
           : "pending";
         updateFollowingStatus(authorId, confirmedStatus);
+
+        addActivity(
+          "follow_request_sent",
+          author.username,
+          `You requested to follow @${author.username}`,
+        );
       } else {
         updateFollowingStatus(authorId, "none");
+
+        addActivity(
+          "unfollowed",
+          author.username,
+          `You unfollowed @${author.username}`,
+        );
       }
+
+      await updateCachedProfile(authorId, { followStatus: confirmedStatus }).catch(() => {});
 
       if (onStatusChange) onStatusChange();
     } catch (e) {

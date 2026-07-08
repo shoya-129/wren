@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Animated, Easing, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -18,6 +18,12 @@ export default function WrenIsland({
   springFriction = 6,
   easing = Easing.out(Easing.ease),
   style,
+  // Controlled props
+  status, // undefined (auto) | "loading" | "success" | "error"
+  errorText = "Error occurred",
+  errorIcon,
+  errorWidth = 280,
+  errorTimeout = 3000,
 }) {
   const insets = useSafeAreaInsets();
 
@@ -35,9 +41,100 @@ export default function WrenIsland({
 
   const [textOpacity] = useState(() => new Animated.Value(0));
 
+  const [hasEntered, setHasEntered] = useState(false);
+  const pendingTransition = useRef(null);
+  const hasTriggeredTransition = useRef(false);
+
+  const runExitTransition = () => {
+    Animated.parallel([
+      Animated.timing(textOpacity, {
+        toValue: 0,
+        duration: 120,
+        easing,
+        useNativeDriver: false,
+      }),
+      Animated.timing(lockOpacity, {
+        toValue: 0,
+        duration: 120,
+        easing,
+        useNativeDriver: false,
+      }),
+      Animated.spring(pillWidth, {
+        toValue: 60,
+        friction: springFriction,
+        useNativeDriver: false,
+      }),
+      Animated.spring(pillHeight, {
+        toValue: 30,
+        friction: springFriction,
+        useNativeDriver: false,
+      }),
+    ]).start(() => {
+      Animated.parallel([
+        Animated.timing(pillOpacity, {
+          toValue: 0,
+          duration: 150,
+          easing,
+          useNativeDriver: false,
+        }),
+        Animated.timing(pillTranslateY, {
+          toValue: -30,
+          duration: 150,
+          easing,
+          useNativeDriver: false,
+        }),
+      ]).start(() => {
+        if (onComplete) onComplete();
+      });
+    });
+  };
+
+  const runCompletionTransition = (targetStatus) => {
+    if (hasTriggeredTransition.current) return;
+    hasTriggeredTransition.current = true;
+
+    const isError = targetStatus === "error";
+    const finalWidth = isError ? errorWidth : step2Width;
+    const finalTimeout = isError ? errorTimeout : step2Timeout;
+
+    Animated.parallel([
+      Animated.timing(iconsOpacity, {
+        toValue: 0,
+        duration: fadeDuration,
+        easing,
+        useNativeDriver: false,
+      }),
+      Animated.spring(lockScale, {
+        toValue: 1,
+        friction: springFriction,
+        useNativeDriver: false,
+      }),
+      Animated.timing(lockOpacity, {
+        toValue: 1,
+        duration: fadeDuration,
+        easing,
+        useNativeDriver: false,
+      }),
+      Animated.spring(pillWidth, {
+        toValue: finalWidth,
+        friction: springFriction,
+        useNativeDriver: false,
+      }),
+      Animated.timing(textOpacity, {
+        toValue: 1,
+        duration: fadeDuration + 30,
+        easing,
+        useNativeDriver: false,
+      }),
+    ]).start(() => {
+      setTimeout(() => {
+        runExitTransition();
+      }, finalTimeout);
+    });
+  };
+
+  // 1. Entrance animation on mount
   useEffect(() => {
-    // Sequence of animations:
-    // 1. Snappy drop-down, fade-in, and expansion of the pill along with step 1 icons/text
     Animated.parallel([
       Animated.timing(pillOpacity, {
         toValue: 1,
@@ -72,106 +169,33 @@ export default function WrenIsland({
         useNativeDriver: false,
       }),
     ]).start(() => {
-      // 2. Pause so the user can see the first state (e.g. Encrypting / Logging In)
-      setTimeout(() => {
-        // 3. Step 2 transition: Lock/Check icon fades/scales in, pill expands, and step 2 text fades in, while step 1 icons fade out
-        Animated.parallel([
-          Animated.timing(iconsOpacity, {
-            toValue: 0,
-            duration: fadeDuration,
-            easing,
-            useNativeDriver: false,
-          }),
-          Animated.spring(lockScale, {
-            toValue: 1,
-            friction: springFriction,
-            useNativeDriver: false,
-          }),
-          Animated.timing(lockOpacity, {
-            toValue: 1,
-            duration: fadeDuration,
-            easing,
-            useNativeDriver: false,
-          }),
-          Animated.spring(pillWidth, {
-            toValue: step2Width,
-            friction: springFriction,
-            useNativeDriver: false,
-          }),
-          Animated.timing(textOpacity, {
-            toValue: 1,
-            duration: fadeDuration + 30,
-            easing,
-            useNativeDriver: false,
-          }),
-        ]).start(() => {
-          // 4. Pause longer so user can read what happened, then shrink and exit
-          setTimeout(() => {
-            Animated.parallel([
-              Animated.timing(textOpacity, {
-                toValue: 0,
-                duration: 120,
-                easing,
-                useNativeDriver: false,
-              }),
-              Animated.timing(lockOpacity, {
-                toValue: 0,
-                duration: 120,
-                easing,
-                useNativeDriver: false,
-              }),
-              Animated.spring(pillWidth, {
-                toValue: 60,
-                friction: springFriction,
-                useNativeDriver: false,
-              }),
-              Animated.spring(pillHeight, {
-                toValue: 30,
-                friction: springFriction,
-                useNativeDriver: false,
-              }),
-            ]).start(() => {
-              Animated.parallel([
-                Animated.timing(pillOpacity, {
-                  toValue: 0,
-                  duration: 150,
-                  easing,
-                  useNativeDriver: false,
-                }),
-                Animated.timing(pillTranslateY, {
-                  toValue: -30,
-                  duration: 150,
-                  easing,
-                  useNativeDriver: false,
-                }),
-              ]).start(() => {
-                if (onComplete) onComplete();
-              });
-            });
-          }, step2Timeout);
-        });
-      }, step1Timeout);
+      setHasEntered(true);
+      const nextStatus = pendingTransition.current || status;
+      if (nextStatus && nextStatus !== "loading") {
+        runCompletionTransition(nextStatus);
+      } else if (!status) {
+        // Automatic mode
+        setTimeout(() => {
+          runCompletionTransition("success");
+        }, step1Timeout);
+      }
     });
-  }, [
-    pillOpacity,
-    pillTranslateY,
-    pillWidth,
-    pillHeight,
-    iconsOpacity,
-    iconsScale,
-    lockScale,
-    lockOpacity,
-    textOpacity,
-    onComplete,
-    step1Width,
-    step2Width,
-    step1Timeout,
-    step2Timeout,
-    entranceDuration,
-    fadeDuration,
-    springFriction,
-    easing,
-  ]);
+  }, []);
+
+  // 2. React to status changes once entered
+  useEffect(() => {
+    if (!status) return;
+
+    if (hasEntered) {
+      if (status === "success" || status === "error") {
+        runCompletionTransition(status);
+      }
+    } else {
+      pendingTransition.current = status;
+    }
+  }, [status, hasEntered]);
+
+  const isErrorState = status === "error" || pendingTransition.current === "error";
 
   return (
     <View className="absolute left-0 right-0 items-center z-[9999]" style={[{ top: insets.top + 12 }, style]}>
@@ -189,7 +213,7 @@ export default function WrenIsland({
           elevation: 8,
         }}
       >
-        {/* Step 1: Icons & Message */}
+        {/* Step 1: Icons & Message (Loading/Pending state) */}
         <Animated.View
           className="flex-row items-center justify-center absolute"
           style={{
@@ -210,23 +234,31 @@ export default function WrenIsland({
           )}
         </Animated.View>
 
-        {/* Step 2: Completion Icon & Message */}
+        {/* Step 2: Completion Icon & Message (Success or Error) */}
         <Animated.View
           className="flex-row items-center justify-center absolute"
           style={{
             opacity: lockOpacity,
           }}
         >
-          {step2Icon && (
-            <Animated.View className="mr-2" style={{ transform: [{ scale: lockScale }] }}>
-              {step2Icon}
-            </Animated.View>
+          {isErrorState ? (
+            errorIcon && (
+              <Animated.View className="mr-2" style={{ transform: [{ scale: lockScale }] }}>
+                {errorIcon}
+              </Animated.View>
+            )
+          ) : (
+            step2Icon && (
+              <Animated.View className="mr-2" style={{ transform: [{ scale: lockScale }] }}>
+                {step2Icon}
+              </Animated.View>
+            )
           )}
           <Animated.Text
-            className="text-white text-[13px] font-semibold tracking-[0.1px]"
+            className={`text-[13px] font-semibold tracking-[0.1px] ${isErrorState ? "text-red-500" : "text-white"}`}
             style={{ opacity: textOpacity }}
           >
-            {step2Text}
+            {isErrorState ? errorText : step2Text}
           </Animated.Text>
         </Animated.View>
       </Animated.View>

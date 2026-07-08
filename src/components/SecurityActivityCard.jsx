@@ -46,6 +46,11 @@ const getActivityIcon = (type) => {
       return { Icon: UserX, color: "#F59E0B" };
     case "post_created":
       return { Icon: ShieldCheck, color: "#8B5CF6" };
+    case "follow_request_accept_failed":
+    case "follow_request_reject_failed":
+    case "follow_request_send_failed":
+    case "unfollow_failed":
+      return { Icon: UserX, color: "#EF4444" };
     default:
       return { Icon: Lock, color: "#71717A" };
   }

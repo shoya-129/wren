@@ -30,29 +30,36 @@ export default function Login() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [islandConfig, setIslandConfig] = useState(null);
+  const [islandState, setIslandState] = useState({
+    visible: false,
+    status: "loading",
+    errorText: "",
+    onComplete: null,
+  });
 
   const handleLogin = async () => {
     if (isLoading) return;
 
     if (!identifier.trim() || !password) {
       const msg = "Please fill in all fields.";
-      const estimatedWidth = Math.min(320, Math.max(220, msg.length * 8 + 60));
-      setIslandConfig({
-        step1Text: msg,
-        step2Text: msg,
-        step1IconLeft: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
-        step2Icon: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
-        step1Width: estimatedWidth,
-        step2Width: estimatedWidth,
-        step1Timeout: 50,
-        step2Timeout: 3000,
+      setIslandState({
+        visible: true,
+        status: "error",
+        errorText: msg,
+        onComplete: () => setIslandState((prev) => ({ ...prev, visible: false })),
       });
       return;
     }
 
+    setIsLoading(true);
+    setIslandState({
+      visible: true,
+      status: "loading",
+      errorText: "",
+      onComplete: null,
+    });
+
     try {
-      setIsLoading(true);
       const res = await api.post(
         "/auth/login",
         {
@@ -76,17 +83,12 @@ export default function Login() {
         privateKey,
       );
 
-      setIslandConfig({
-        step1Text: "Logging In",
-        step2Text: "Welcome Back!",
-        step1IconLeft: <UserRoundIcon size={16} color={colors.primary} strokeWidth={2.8} />,
-        step1IconRight: <UserRoundKeyIcon size={16} color="#10B981" strokeWidth={3} />,
-        step2Icon: <LockIcon size={16} color="#10B981" strokeWidth={2.8} />,
-        step1Width: 180,
-        step2Width: 200,
-        step1Timeout: 600,
-        step2Timeout: 1400,
+      setIslandState({
+        visible: true,
+        status: "success",
+        errorText: "",
         onComplete: async () => {
+          setIslandState((prev) => ({ ...prev, visible: false }));
           setApiAuthToken(accessToken);
           await SecureStore.setItemAsync("privateKey", privateKey);
           await SecureStore.setItemAsync("feedKey", feedKey);
@@ -101,21 +103,18 @@ export default function Login() {
             feedKey,
           });
           router.replace("/(tabs)");
-        }
+        },
       });
     } catch (e) {
       console.error("Login failed", e);
       const errMsg = e?.response?.data?.message || "Please check your credentials and try again.";
-      const estimatedWidth = Math.min(320, Math.max(220, errMsg.length * 8 + 60));
-      setIslandConfig({
-        step1Text: errMsg,
-        step2Text: errMsg,
-        step1IconLeft: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
-        step2Icon: <ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />,
-        step1Width: estimatedWidth,
-        step2Width: estimatedWidth,
-        step1Timeout: 50,
-        step2Timeout: 3000,
+      setIslandState({
+        visible: true,
+        status: "error",
+        errorText: errMsg,
+        onComplete: () => {
+          setIslandState((prev) => ({ ...prev, visible: false }));
+        },
       });
     } finally {
       setIsLoading(false);
@@ -184,8 +183,8 @@ export default function Login() {
 
               <Pressable
                 onPress={handleLogin}
-                disabled={isLoading || !!islandConfig}
-                className={`h-12 rounded-full items-center justify-center ${isLoading || !!islandConfig ? "opacity-70" : "active:opacity-90"
+                disabled={isLoading || islandState.visible}
+                className={`h-12 rounded-full items-center justify-center ${isLoading || islandState.visible ? "opacity-70" : "active:opacity-90"
                   }`}
                 style={{ backgroundColor: colors.primary }}
               >
@@ -214,15 +213,20 @@ export default function Login() {
           </View>
         </ScrollView>
       </SafeAreaView>
-      {islandConfig && (
+      {islandState.visible && (
         <WrenIsland
-          {...islandConfig}
-          onComplete={async () => {
-            if (islandConfig.onComplete) {
-              await islandConfig.onComplete();
-            }
-            setIslandConfig(null);
-          }}
+          status={islandState.status}
+          step1Text="Logging In"
+          step2Text="Welcome Back!"
+          step1IconLeft={<UserRoundIcon size={16} color={colors.primary} strokeWidth={2.8} />}
+          step1IconRight={<UserRoundKeyIcon size={16} color="#10B981" strokeWidth={3} />}
+          step2Icon={<LockIcon size={16} color="#10B981" strokeWidth={2.8} />}
+          errorIcon={<ShieldAlertIcon size={16} color="#EF4444" strokeWidth={2.8} />}
+          errorText={islandState.errorText}
+          step1Width={180}
+          step2Width={200}
+          errorWidth={Math.min(320, Math.max(220, islandState.errorText.length * 8 + 60))}
+          onComplete={islandState.onComplete}
         />
       )}
     </KeyboardAvoidingView>

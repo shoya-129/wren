@@ -38,6 +38,7 @@ const ThreadBottomSheet = ({
   onClose,
   onAddReply,
   onSheetVisibilityChange,
+  panDownClose = true,
   allowDelete = false,
   onDeleted,
 }) => {
@@ -52,8 +53,6 @@ const ThreadBottomSheet = ({
     privateKey,
     publicKey,
     feedKey,
-    feedKeysCache,
-    cacheFeedKey,
     addActivity,
   } = useUser();
 
@@ -125,18 +124,14 @@ const ThreadBottomSheet = ({
       return decryptPostsOrReplies(items, {
         currentUserUid: user?.uid,
         feedKey,
-        feedKeysCache,
         publicKey,
         privateKey,
-        cacheFeedKey,
         parentFeedKey: parentPost?.feedKey,
       });
     },
     [
       user?.uid,
       feedKey,
-      feedKeysCache,
-      cacheFeedKey,
       publicKey,
       privateKey,
     ],
@@ -436,7 +431,7 @@ const ThreadBottomSheet = ({
       ref={sheetRef}
       index={visible ? 0 : -1}
       snapPoints={snapPoints}
-      enablePanDownToClose
+      enablePanDownToClose={panDownClose}
       backgroundStyle={{ backgroundColor: "#121212" }}
       handleIndicatorStyle={{ backgroundColor: "rgba(255,255,255,0.3)" }}
       keyboardBehavior="interactive"

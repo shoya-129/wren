@@ -22,7 +22,7 @@ import {
   VerifiedIcon as Verified
 } from "../lib/icons";
 import api from "../utils/api";
-import { findProfile } from "../utils/cache";
+import { findProfile, updateCachedProfile, saveProfileToCache } from "../utils/cache";
 import { getFollowStatus } from "../utils/followStatus";
 import { showToast } from "../utils/toast";
 import { resolveUserId } from "../utils/users";
@@ -48,8 +48,6 @@ const ProfileView = ({
     privateKey,
     publicKey,
     feedKey,
-    feedKeysCache,
-    cacheFeedKey,
     followingStatus,
     updateFollowingStatus,
     addActivity,
@@ -107,20 +105,16 @@ const ProfileView = ({
       return decryptPostsOrReplies(items, {
         currentUserUid: currentUser?.uid,
         feedKey,
-        feedKeysCache,
         publicKey,
         privateKey,
-        cacheFeedKey,
         updateFollowingStatus,
       });
     },
     [
       currentUser?.uid,
       feedKey,
-      feedKeysCache,
       publicKey,
       privateKey,
-      cacheFeedKey,
       updateFollowingStatus,
     ],
   );
@@ -139,7 +133,9 @@ const ProfileView = ({
 
         const fetchStatsSafely = async (path) => {
           try {
-            return await api.get(path);
+            return await api.get(path, {
+              headers: { "Cache-Control": "no-cache" },
+            });
           } catch (e) {
             if (e?.response?.status === 404 || e?.response?.status === 500) {
               console.warn(`Stats endpoint unavailable for ${path}`);
@@ -150,7 +146,9 @@ const ProfileView = ({
         };
 
         if (isOwnProfile) {
-          profileRes = await api.get("/user/profile");
+          profileRes = await api.get("/user/profile", {
+            headers: { "Cache-Control": "no-cache" },
+          });
           statsRes = await fetchStatsSafely("/user/stats");
         } else {
           profileRes = await findProfile(targetUsername);
@@ -170,6 +168,7 @@ const ProfileView = ({
               try {
                 const nextProfileRes = await api.get(
                   `/user/profile/${encodeURIComponent(candidate)}`,
+                  { headers: { "Cache-Control": "no-cache" } },
                 );
                 const nextStatsRes = await fetchStatsSafely(
                   `/user/stats/${encodeURIComponent(candidate)}`,
@@ -178,6 +177,18 @@ const ProfileView = ({
                 statsRes = nextStatsRes;
                 lookupId = candidate;
                 lastError = null;
+                // Persist fetched profile into cache without refetching
+                try {
+                  const authorIdToCache = nextProfileRes?.data?.user?.uid || candidate;
+                  await saveProfileToCache(
+                    authorIdToCache,
+                    nextProfileRes?.data,
+                    nextStatsRes?.data || {},
+                    candidate,
+                  );
+                } catch (cacheErr) {
+                  console.warn("Failed to save profile to cache", cacheErr);
+                }
                 break;
               } catch (e) {
                 lastError = e;
@@ -339,22 +350,12 @@ const ProfileView = ({
   const handleFollowToggle = async () => {
     if (isOwnProfile || !profileUid || followLoading) return;
 
-    const currentStatus = followingStatus[profileUid] || "none";
+    const currentStatus = followState;
     const nextStatus = currentStatus === "none" ? "pending" : "none";
     const username = activeProfileUser?.username;
 
     setFollowLoading(true);
     updateFollowingStatus(profileUid, nextStatus);
-
-    if (nextStatus === "pending") {
-      addActivity(
-        "follow_request_sent",
-        username,
-        `You requested to follow @${username}`,
-      );
-    } else {
-      addActivity("unfollowed", username, `You unfollowed @${username}`);
-    }
 
     try {
       const requestPath = currentStatus === "none"
@@ -376,14 +377,25 @@ const ProfileView = ({
         }
       }
 
+      let confirmedStatus = "none";
       if (currentStatus === "none") {
-        const confirmedStatus = res?.data?.follow?.status === "accepted"
+        confirmedStatus = res?.data?.follow?.status === "accepted"
           ? "accepted"
           : "pending";
         updateFollowingStatus(profileUid, confirmedStatus);
+
+        addActivity(
+          "follow_request_sent",
+          username,
+          `You requested to follow @${username}`,
+        );
       } else {
         updateFollowingStatus(profileUid, "none");
+
+        addActivity("unfollowed", username, `You unfollowed @${username}`);
       }
+
+      await updateCachedProfile(profileUid, { followStatus: confirmedStatus }).catch(() => {});
 
       fetchProfile(false);
     } catch (e) {

@@ -36,6 +36,9 @@ const Feed = forwardRef(({ onThreadVisibilityChange }, ref) => {
   const [selectedPost, setSelectedPost] = useState(null);
   const [isSheetVisible, setIsSheetVisible] = useState(false);
   const [optionsPost, setOptionsPost] = useState(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const flatListRef = useRef(null);
 
   // Pull user and crypto context
@@ -44,59 +47,79 @@ const Feed = forwardRef(({ onThreadVisibilityChange }, ref) => {
     privateKey,
     publicKey,
     feedKey,
-    feedKeysCache,
-    cacheFeedKey,
     updateFollowingStatus,
     isHydrating,
   } = useUser();
 
-  const fetchAndDecrypt = useCallback(async () => {
-    if (isHydrating) return;
+  const fetchFeed = useCallback(
+    async (pageNumber = 1, { append } = { append: false }) => {
+      if (isHydrating) return;
 
-    setLoading(true);
-    try {
-      const response = await api.get("/posts/feed", {
-        params: { page: 1, limit: 20 },
-      });
-      const rawPosts = response.data || [];
+      const limit = 20;
+      if (pageNumber === 1) {
+        setLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
 
-      const topLevelPosts = rawPosts.filter((p) => !isReplyRecord(p));
-      const filtered = user?.uid
-        ? topLevelPosts.filter((p) => p.uid !== user.uid)
-        : topLevelPosts;
+      try {
+        const response = await api.get("/posts/feed", {
+          params: { page: pageNumber, limit },
+        });
+        const rawPosts = response.data || [];
 
-      const decrypted = await decryptPostsOrReplies(filtered, {
-        currentUserUid: user?.uid,
-        feedKey,
-        feedKeysCache,
-        publicKey,
-        privateKey,
-        cacheFeedKey,
-        updateFollowingStatus,
-      });
-      setPosts(decrypted);
-      setLoading(false);
+        const topLevelPosts = rawPosts.filter((p) => !isReplyRecord(p));
+        const filtered = user?.uid
+          ? topLevelPosts.filter((p) => p.uid !== user.uid)
+          : topLevelPosts;
 
-      cacheProfiles(decrypted).catch(console.error);
-    } catch (e) {
-      console.error("Failed to fetch feed", e);
-      showToast("Failed to load feed. Please try again later.");
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    isHydrating,
-    user,
-    feedKey,
-    privateKey,
-    publicKey,
-    feedKeysCache,
-    cacheFeedKey,
-    updateFollowingStatus,
-  ]);
+        const decrypted = await decryptPostsOrReplies(filtered, {
+          currentUserUid: user?.uid,
+          feedKey,
+          publicKey,
+          privateKey,
+          updateFollowingStatus,
+        });
+
+        if (append) {
+          setPosts((prev) => {
+            // Deduplicate by postId
+            const map = new Map();
+            for (const p of prev) map.set(p.postId, p);
+            for (const p of decrypted) map.set(p.postId, { ...(map.get(p.postId) || {}), ...p });
+            return Array.from(map.values());
+          });
+        } else {
+          setPosts(decrypted);
+        }
+
+        setHasMore(decrypted.length >= limit);
+        setPage(pageNumber);
+
+        // Cache author profiles for this batch
+        cacheProfiles(decrypted).catch(console.error);
+      } catch (e) {
+        console.error("Failed to fetch feed", e);
+        if (!append) {
+          showToast("Failed to load feed. Please try again later.");
+        }
+      } finally {
+        setLoading(false);
+        setIsLoadingMore(false);
+      }
+    },
+    [
+      isHydrating,
+      user,
+      feedKey,
+      privateKey,
+      publicKey,
+      updateFollowingStatus,
+    ],
+  );
 
   useEffect(() => {
-    fetchAndDecrypt();
+    fetchFeed(1, { append: false });
   }, []);
 
   useImperativeHandle(ref, () => ({
@@ -110,8 +133,13 @@ const Feed = forwardRef(({ onThreadVisibilityChange }, ref) => {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await fetchAndDecrypt();
+    await fetchFeed(1, { append: false });
     setRefreshing(false);
+  };
+
+  const loadMore = () => {
+    if (loading || isLoadingMore || !hasMore) return;
+    fetchFeed(page + 1, { append: true });
   };
 
   const openThread = useCallback((post) => {
@@ -156,7 +184,7 @@ const Feed = forwardRef(({ onThreadVisibilityChange }, ref) => {
     />
   );
 
-  if (loading) {
+  if (loading && posts.length === 0) {
     return (
       <View className="flex-1 items-center justify-center">
         <ActivityIndicator size="large" color={colors.primary} />
@@ -164,13 +192,21 @@ const Feed = forwardRef(({ onThreadVisibilityChange }, ref) => {
     );
   }
 
+  const renderFooter = () => {
+    if (!isLoadingMore) return null;
+    return (
+      <View className="py-4 items-center">
+        <ActivityIndicator size="small" color={colors.primary} />
+      </View>
+    );
+  };
+
   return (
     <View className="flex-1 bg-black">
       <FlatList
         ref={flatListRef}
         data={posts}
-        keyExtractor={(item) =>
-          item.postId?.toString() ?? Math.random().toString()}
+        keyExtractor={(item) => item.postId?.toString() ?? Math.random().toString()}
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -181,6 +217,9 @@ const Feed = forwardRef(({ onThreadVisibilityChange }, ref) => {
             colors={[colors.primary]}
           />
         }
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={renderFooter}
         contentContainerStyle={{
           paddingBottom: 96,
           paddingHorizontal: 16,
