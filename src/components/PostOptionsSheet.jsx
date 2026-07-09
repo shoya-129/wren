@@ -1,9 +1,20 @@
 import BottomSheet, {
   BottomSheetTextInput,
   BottomSheetView,
+  BottomSheetBackdrop,
 } from "@gorhom/bottom-sheet";
+
+const renderBackdrop = (props) => (
+  <BottomSheetBackdrop
+    {...props}
+    appearsOnIndex={0}
+    disappearsOnIndex={-1}
+    opacity={0.5}
+    pressBehavior="close"
+  />
+);
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, BackHandler, Pressable, Text, View } from "react-native";
 import {
   AlertTriangleIcon as AlertTriangle,
   ArrowLeftIcon as ArrowLeft,
@@ -45,6 +56,21 @@ const PostOptionsSheet = ({
       else sheetRef.current.close();
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const onBackPress = () => {
+      handleClose();
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [visible, handleClose]);
 
   const resetState = () => {
     setStep("menu");
@@ -127,6 +153,7 @@ const PostOptionsSheet = ({
       enablePanDownToClose
       backgroundStyle={{ backgroundColor: "#121212" }}
       handleIndicatorStyle={{ backgroundColor: "rgba(255,255,255,0.3)" }}
+      backdropComponent={renderBackdrop}
       onClose={handleClose}
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"

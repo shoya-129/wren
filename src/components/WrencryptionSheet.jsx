@@ -1,7 +1,18 @@
 import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetView,
+  BottomSheetBackdrop,
 } from "@gorhom/bottom-sheet";
+
+const renderBackdrop = (props) => (
+  <BottomSheetBackdrop
+    {...props}
+    appearsOnIndex={0}
+    disappearsOnIndex={-1}
+    opacity={0.5}
+    pressBehavior="close"
+  />
+);
 import {
   LockIcon as Lock,
   ShieldCheckIcon as ShieldCheck,
@@ -10,8 +21,8 @@ import {
   UsersIcon as Users,
   XIcon as X,
 } from "../lib/icons";
-import { useMemo, useRef } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useEffect, useMemo, useRef } from "react";
+import { BackHandler, Pressable, Text, View } from "react-native";
 import colors from "../lib/colors.json";
 
 const statValue = (value) => String(value ?? 0);
@@ -46,6 +57,21 @@ export default function WrencryptionSheet({
   const sheetRef = useRef(null);
   const snapPoints = useMemo(() => ["82%"], []);
 
+  useEffect(() => {
+    if (!visible) return;
+
+    const onBackPress = () => {
+      onClose?.();
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [visible, onClose]);
+
   const approvedFollowersCount = stats?.followersCount ?? 0;
   const sharedFeedKeyCount = securityStats?.feedKeySharedWithCount ?? 0;
   const pendingRequestsCount = securityStats?.pendingFollowRequestsCount ?? 0;
@@ -61,6 +87,7 @@ export default function WrencryptionSheet({
       enablePanDownToClose
       backgroundStyle={{ backgroundColor: "#121212" }}
       handleIndicatorStyle={{ backgroundColor: "rgba(255,255,255,0.3)" }}
+      backdropComponent={renderBackdrop}
       onClose={onClose}
     >
       <BottomSheetScrollView

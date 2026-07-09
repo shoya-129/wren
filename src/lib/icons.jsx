@@ -12,11 +12,11 @@ import {
   Flag,
   Home,
   Image,
-  ImageIcon,
   Key,
   Lock,
   LogOut,
   Mail,
+  Maximize2,
   MessageCircle,
   MoreVertical,
   Plus,
@@ -37,8 +37,9 @@ import {
   UserRoundKey,
   Users,
   UserX,
-  X,
+  X
 } from "lucide-react-native";
+import { View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import colors from "./colors.json";
 
@@ -81,6 +82,46 @@ export const VerifiedIcon = ({ size = 24, style, strokeWidth = 2, ...props }) =>
     />
   </Svg>
 );
+export const CharProgressIcon = ({ currentLength, maxLength = 280, size = 20 }) => {
+  const percentage = Math.min(1, currentLength / maxLength);
+  const strokeWidth = 2;
+
+  let color = colors.primary;
+  if (currentLength >= maxLength - 20) {
+    color = "#EAB308";
+  }
+  if (currentLength >= maxLength) {
+    color = "#EF4444";
+  }
+
+  const badgePath = "M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z";
+
+  return (
+    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+      <Svg width={size} height={size} viewBox="0 0 24 24">
+        <Path
+          d={badgePath}
+          fill="transparent"
+          stroke="rgba(255,255,255,0.15)"
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <Path
+          d={badgePath}
+          stroke={color}
+          strokeWidth={strokeWidth}
+          fill="transparent"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          pathLength={100}
+          strokeDasharray={100}
+          strokeDashoffset={100 - percentage * 100}
+        />
+      </Svg>
+    </View>
+  );
+};
 export const BellIcon = (props) => <Bell {...props} />;
 export const CompassIcon = (props) => <Compass {...props} />;
 export const HomeIcon = (props) => <Home {...props} />;
@@ -99,7 +140,6 @@ export const ShieldAlertIcon = (props) => <ShieldAlert {...props} />;
 export const ShieldCheckIcon = (props) => <ShieldCheck {...props} />;
 export const XIcon = (props) => <X {...props} />;
 export const FileTextIcon = (props) => <FileText {...props} />;
-export const ImageIconIcon = (props) => <ImageIcon {...props} />;
 export const ImageLucideIcon = (props) => <Image {...props} />;
 export const CheckIcon = (props) => <Check {...props} />;
 export const MailIcon = (props) => <Mail {...props} />;
@@ -118,6 +158,7 @@ export const LogOutIcon = (props) => <LogOut {...props} />;
 export const EyeIcon = (props) => <Eye {...props} />;
 export const EyeOffIcon = (props) => <EyeOff {...props} />;
 export const PlusIcon = (props) => <Plus {...props} />;
+export const Maximize2Icon = (props) => <Maximize2 {...props} />;
 
 // Namespace object to allow WrenIcons.IconName usage
 export const WrenIcons = {
@@ -142,7 +183,6 @@ export const WrenIcons = {
   ShieldCheck: ShieldCheckIcon,
   X: XIcon,
   FileText: FileTextIcon,
-  ImageIcon: ImageIconIcon,
   Image: ImageLucideIcon,
   Check: CheckIcon,
   Mail: MailIcon,
@@ -161,6 +201,8 @@ export const WrenIcons = {
   Eye: EyeIcon,
   EyeOff: EyeOffIcon,
   Plus: PlusIcon,
+  Maximize2: Maximize2Icon,
+  CharacterProgressRing: CharProgressIcon,
 };
 
 export default WrenIcons;

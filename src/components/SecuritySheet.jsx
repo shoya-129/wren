@@ -1,8 +1,19 @@
-import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
+import BottomSheet, { BottomSheetView, BottomSheetBackdrop } from "@gorhom/bottom-sheet";
+
+const renderBackdrop = (props) => (
+  <BottomSheetBackdrop
+    {...props}
+    appearsOnIndex={0}
+    disappearsOnIndex={-1}
+    opacity={0.5}
+    pressBehavior="close"
+  />
+);
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
+  BackHandler,
   Easing,
   Pressable,
   Text,
@@ -88,6 +99,22 @@ const SecuritySheet = ({
   panDown = false,
 }) => {
   const [orbitRotation] = useState(() => new Animated.Value(0));
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const onBackPress = () => {
+      onContinue?.();
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isOpen, onContinue]);
 
   useEffect(() => {
     Animated.sequence([
@@ -113,7 +140,9 @@ const SecuritySheet = ({
       snapPoints={["68%"]}
       index={index}
       enablePanDownToClose={panDown}
+      onChange={(idx) => setIsOpen(idx >= 0)}
       backgroundStyle={{ backgroundColor: "#121212" }}
+      backdropComponent={renderBackdrop}
       handleIndicatorStyle={{
         backgroundColor: "rgba(255,255,255,0.25)",
         width: 42,

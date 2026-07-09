@@ -1,29 +1,47 @@
 import BottomSheet, {
+  BottomSheetBackdrop,
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Feed from "../../components/Feed";
 import SecuritySheet from "../../components/SecuritySheet";
 import WrenIsland from "../../components/WrenIsland";
 import { useUser } from "../../context/UserContext";
-import {
+import colors from "../../lib/colors.json";
+import WrenIcons, {
   FileTextIcon as FileText,
-  ImageIconIcon as ImageIcon,
+  Image as ImageIcon,
   LockIcon as Lock,
   PlusIcon as Plus,
   SendIcon as Send,
   ShieldAlertIcon as ShieldAlert,
   ShieldCheckIcon as ShieldCheck,
+  UserRoundIcon as UserRound,
+  VerifiedIcon as Verified,
   XIcon as X,
 } from "../../lib/icons";
 import api from "../../utils/api";
-import colors from "../../lib/colors.json";
 import { encryptData } from "../../utils/encryption";
 import { pickImageBase64, uploadEncryptedMedia } from "../../utils/media";
 import { showToast } from "../../utils/toast";
+
+const getImageUri = (media) => {
+  if (!media || typeof media !== "string") return null;
+  const trimmed = media.trim();
+  if (!trimmed) return null;
+  if (
+    trimmed.startsWith("data:image/") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("file://")
+  ) {
+    return trimmed;
+  }
+  return `data:image/jpeg;base64,${trimmed}`;
+};
 
 export default function HomeScreen() {
   const { feedKey, addActivity, user } = useUser();
@@ -31,12 +49,26 @@ export default function HomeScreen() {
   const [imageBase64, setImageBase64] = useState(null); // stores { uri, base64 }
   const [uploadProgress, setUploadProgress] = useState(null); // stores progress percentage or null
   const [isSecuring, setIsSecuring] = useState(false);
+  const [replyingToPost, setReplyingToPost] = useState(null);
 
   const securitySheetref = useRef(null);
   const bottomSheetRef = useRef(null);
   const feedRef = useRef(null);
   const pendingPostRef = useRef(null);
   const snapPoints = useMemo(() => ["85%"], []);
+
+  const renderBackdrop = useCallback(
+    (props) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.5}
+        pressBehavior="close"
+      />
+    ),
+    [],
+  );
 
   const openCompose = () => {
     bottomSheetRef.current?.expand();
@@ -78,22 +110,33 @@ export default function HomeScreen() {
           );
         }
 
-        const response = await api.post("/posts", {
+        const isReply = !!replyingToPost;
+        const endpoint = isReply ? `/posts/${replyingToPost.postId}/comment` : "/posts";
+        const response = await api.post(endpoint, {
           encryptedContent,
           encryptedMedia,
-          visibility: "followers",
+          ...(isReply ? {} : { visibility: "followers" }),
         });
 
-        await addActivity(
-          "post_created",
-          "self",
-          "You published a secure end-to-end encrypted post",
-        );
+        if (isReply) {
+          await addActivity(
+            "reply_created",
+            replyingToPost?.author?.username ?? "self",
+            "You replied to a post",
+          );
+        } else {
+          await addActivity(
+            "post_created",
+            "self",
+            "You published a secure end-to-end encrypted post",
+          );
+        }
 
         // Success: Clean up editor states and close bottom sheet
         setPostContent("");
         setImageBase64(null);
         setUploadProgress(null);
+        setReplyingToPost(null);
         bottomSheetRef.current?.close();
 
         // Hydrate decrypted post locally so it renders immediately without refresh
@@ -113,12 +156,13 @@ export default function HomeScreen() {
           repostsCount: 0,
           repliesCount: 0,
           feedKey: feedKey,
+          isReply: isReply,
         };
 
         pendingPostRef.current = newPostObj;
         setIsSecuring(true);
       } catch (e) {
-        console.error("Error creating post:", e);
+        console.error("Error creating post/reply:", e);
         showToast("Could not publish your post. Please try again.");
         setUploadProgress(null);
       }
@@ -170,7 +214,19 @@ export default function HomeScreen() {
         </View>
 
         {/* Home Feed */}
-        <Feed ref={feedRef} />
+        <Feed
+          ref={feedRef}
+          onReplyPress={(postToReplyTo, initialText, initialImage) => {
+            setReplyingToPost(postToReplyTo);
+            if (initialText) {
+              setPostContent(initialText);
+            }
+            if (initialImage) {
+              setImageBase64(initialImage);
+            }
+            bottomSheetRef.current?.expand();
+          }}
+        />
 
         {/* Compose Post Bottom Sheet */}
         <BottomSheet
@@ -182,10 +238,18 @@ export default function HomeScreen() {
           handleIndicatorStyle={{ backgroundColor: "rgba(255, 255, 255, 0.3)" }}
           keyboardBehavior="interactive"
           keyboardBlurBehavior="restore"
+          backdropComponent={renderBackdrop}
+          onChange={(index) => {
+            if (index === -1) {
+              setReplyingToPost(null);
+              setPostContent("");
+              setImageBase64(null);
+            }
+          }}
         >
           <BottomSheetView className="flex-1 px-6 pt-2 pb-6">
             {/* Modal Header */}
-            <View className="flex-row justify-between items-center mb-6">
+            <View className="flex-row justify-between items-center mb-5">
               <Pressable
                 onPress={() => bottomSheetRef.current?.close()}
                 className="w-8 h-8 rounded-full bg-white/10 border border-white/20 items-center justify-center active:opacity-75"
@@ -196,9 +260,94 @@ export default function HomeScreen() {
                 style={{ fontFamily: "WrenBold" }}
                 className="text-white text-lg flex-1 text-center mr-8"
               >
-                Compose Secure Post
+                {replyingToPost ? "Reply" : "Compose Secure Post"}
               </Text>
             </View>
+
+            {/* Parent Post Thread UI */}
+            {replyingToPost && (
+              <View className="mb-4 px-1">
+                <View className="flex-row">
+                  {/* Left Column: Avatar + Thread Line */}
+                  <View className="items-center mr-3">
+                    {replyingToPost.author?.avatar ? (
+                      <Image
+                        source={{ uri: replyingToPost.author.avatar }}
+                        className="w-9 h-9 rounded-full bg-white/10"
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View className="w-9 h-9 rounded-full bg-white/10 border border-white/20 items-center justify-center">
+                        <UserRound size={20} color={colors.primary} strokeWidth={2.2} />
+                      </View>
+                    )}
+                    {/* The thread line that connects to the composer input below */}
+                    <View className="w-[1.5px] bg-white/15 flex-1 min-h-[30px] my-1" />
+                  </View>
+
+                  {/* Right Column: Author Name & Content */}
+                  <View className="flex-1 pb-1">
+                    <View className="flex-row items-center gap-1">
+                      <Text
+                        style={{ fontFamily: "WrenSemiBold" }}
+                        className="text-white text-sm font-semibold"
+                      >
+                        {replyingToPost.author?.name || replyingToPost.author?.username}
+                      </Text>
+                      {replyingToPost.author?.verified && (
+                        <Verified size={13} />
+                      )}
+                      <Text
+                        style={{ fontFamily: "WrenRegular" }}
+                        className="text-white/40 text-xs ml-1"
+                      >
+                        @{replyingToPost.author?.username}
+                      </Text>
+                    </View>
+                    <Text
+                      style={{ fontFamily: "WrenRegular" }}
+                      className="text-white/70 text-sm mt-1"
+                      numberOfLines={3}
+                    >
+                      {replyingToPost.content}
+                    </Text>
+                    {replyingToPost.media && (
+                      <Image
+                        source={{ uri: getImageUri(replyingToPost.media) }}
+                        className="mt-2 rounded-xl h-24 w-40 bg-white/5"
+                        resizeMode="cover"
+                      />
+                    )}
+                  </View>
+                </View>
+
+                {/* Second row: Current User Avatar next to "Replying to" hint */}
+                <View className="flex-row items-center mt-1">
+                  <View className="items-center mr-3 w-9">
+                    {user?.avatar ? (
+                      <Image
+                        source={{ uri: user.avatar }}
+                        className="w-6 h-6 rounded-full bg-white/10"
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View className="w-6 h-6 rounded-full bg-white/10 border border-white/20 items-center justify-center">
+                        <UserRound size={12} color={colors.primary} strokeWidth={2.2} />
+                      </View>
+                    )}
+                  </View>
+                  <Text
+                    style={{ fontFamily: "WrenRegular" }}
+                    className="text-white/40 text-xs"
+                  >
+                    Replying to{" "}
+                    <Text className="text-primary font-semibold">
+                      @{replyingToPost.author?.username}
+                    </Text>
+                  </Text>
+                </View>
+              </View>
+            )}
 
             {/* Character Limit and Info */}
             <View className="flex-row items-center gap-1.5 mb-4 bg-white/5 p-3 rounded-2xl border border-white/10">
@@ -215,7 +364,7 @@ export default function HomeScreen() {
             {/* Compose Text Input */}
             <View className="flex-1 rounded-2xl bg-white/10 border border-white/20 p-4 mb-4">
               <BottomSheetTextInput
-                placeholder="What's on your mind? (encryptions active)"
+                placeholder={replyingToPost ? "Write your encrypted reply..." : "What's on your mind? (encryptions active)"}
                 placeholderTextColor="rgba(255, 255, 255, 0.4)"
                 multiline={true}
                 maxLength={280}
@@ -266,7 +415,7 @@ export default function HomeScreen() {
                   className={`flex-row items-center gap-1.5 bg-white/5 px-3.5 py-1.5 rounded-full border border-white/15 ${uploadProgress !== null ? "opacity-50" : "active:opacity-75"
                     }`}
                 >
-                  <ImageIcon size={14} color="#FFFFFF" />
+                  <Image size={14} color="#FFFFFF" />
                   <Text
                     style={{ fontFamily: "WrenSemiBold" }}
                     className="text-white text-xs font-semibold"
@@ -276,9 +425,7 @@ export default function HomeScreen() {
                 </Pressable>
 
                 <View className="flex-row items-center gap-3">
-                  <Text className="text-white/30 text-xs">
-                    {postContent.length} / 280
-                  </Text>
+                  <WrenIcons.CharacterProgressRing currentLength={postContent.length} />
                   <Pressable
                     onPress={handleCreatePost}
                     disabled={!postContent.trim() || uploadProgress !== null}
@@ -317,7 +464,9 @@ export default function HomeScreen() {
             step2Width={240}
             onComplete={() => {
               if (pendingPostRef.current) {
-                feedRef.current?.addPost(pendingPostRef.current);
+                if (!pendingPostRef.current.isReply) {
+                  feedRef.current?.addPost(pendingPostRef.current);
+                }
                 pendingPostRef.current = null;
               }
               setIsSecuring(false);

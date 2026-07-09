@@ -1,8 +1,9 @@
 import BottomSheet, {
+  BottomSheetBackdrop,
   BottomSheetFlatList,
-  BottomSheetTextInput,
-  BottomSheetView,
+  BottomSheetTextInput
 } from "@gorhom/bottom-sheet";
+import Svg, { Circle } from "react-native-svg";
 import {
   useCallback,
   useEffect,
@@ -12,16 +13,17 @@ import {
 } from "react";
 import {
   ActivityIndicator,
+  BackHandler,
   Image,
   Keyboard,
   Pressable,
   Text,
-  View,
+  View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useUser } from "../context/UserContext";
 import colors from "../lib/colors.json";
-import { ArrowLeftIcon as ArrowLeft, ImageIconIcon as ImageIcon, SendIcon as Send, XIcon as X } from "../lib/icons";
+import WrenIcons from "../lib/icons";
 import api from "../utils/api";
 import {
   encryptData,
@@ -32,6 +34,16 @@ import { decryptPostsOrReplies } from "../utils/wrencryption";
 import PostCard from "./PostCard";
 import PostOptionsSheet from "./PostOptionsSheet";
 
+const renderBackdrop = (props) => (
+  <BottomSheetBackdrop
+    {...props}
+    appearsOnIndex={0}
+    disappearsOnIndex={-1}
+    opacity={0.5}
+    pressBehavior="close"
+  />
+);
+
 const ThreadBottomSheet = ({
   visible,
   post,
@@ -41,11 +53,14 @@ const ThreadBottomSheet = ({
   panDownClose = true,
   allowDelete = false,
   onDeleted,
+  onExpandReply,
 }) => {
   const sheetRef = useRef(null);
-  const snapPoints = useMemo(() => ["90%"], []);
+  const snapPoints = useMemo(() => ["70%", "95%"], []);
   const loadedRepliesRef = useRef(new Set());
   const repliesCacheRef = useRef({});
+  const isFetchingRef = useRef(false);
+  const lastPostIdRef = useRef(null);
   const insets = useSafeAreaInsets();
 
   const {
@@ -64,6 +79,11 @@ const ThreadBottomSheet = ({
   const [imageBase64, setImageBase64] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(null);
   const [optionsPost, setOptionsPost] = useState(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [isMultiline, setIsMultiline] = useState(false);
 
   const getPostId = useCallback(
     (item) => item?.postId ?? item?.replyId ?? item?.id,
@@ -93,14 +113,24 @@ const ThreadBottomSheet = ({
     const base64 = await pickImageBase64();
     if (base64) {
       setImageBase64(base64);
+      requestAnimationFrame(() => {
+        sheetRef.current?.expand();
+      });
     }
   }, []);
 
   useEffect(() => {
+    if (!post) return;
+    const currentId = post.postId ?? post.replyId ?? post.id;
+    if (currentId === lastPostIdRef.current) {
+      return;
+    }
+    lastPostIdRef.current = currentId;
+
     (async () => {
       setThreadStack([post]);
-      if (post?.postId) {
-        const cached = repliesCacheRef.current[post.postId];
+      if (currentId) {
+        const cached = repliesCacheRef.current[currentId];
         const nextReplies = cached ?? post.replies ?? [];
         setReplies(normalizeReplyBasics(nextReplies));
       }
@@ -136,42 +166,101 @@ const ThreadBottomSheet = ({
       privateKey,
     ],
   );
+  const fetchReplies = useCallback(
+    async (pageNumber = 1, { append = false } = {}) => {
+      if (!activePostId || isFetchingRef.current) return;
+
+      isFetchingRef.current = true;
+      if (pageNumber === 1) {
+        setLoadingReplies(true);
+      } else {
+        setIsLoadingMore(true);
+      }
+
+      try {
+        const limit = 20;
+        const res = await api.get(`/posts/${activePostId}/replies`, {
+          params: { page: pageNumber, limit },
+        });
+
+        const rawReplies = res.data || [];
+        const decrypted = await decryptReplies(rawReplies, activePost);
+        const normalized = normalizeReplyBasics(decrypted);
+
+        setReplies((prev) => {
+          let next;
+          if (append) {
+            const map = new Map();
+            for (const r of prev) map.set(getPostId(r), r);
+            for (const r of normalized) {
+              map.set(getPostId(r), { ...(map.get(getPostId(r)) || {}), ...r });
+            }
+            next = Array.from(map.values());
+          } else {
+            next = normalized;
+          }
+          repliesCacheRef.current[activePostId] = next;
+          return next;
+        });
+
+        setHasMore(normalized.length >= limit);
+        setPage(pageNumber);
+        loadedRepliesRef.current.add(activePostId);
+      } catch (e) {
+        console.error("Failed to load replies page " + pageNumber, e);
+      } finally {
+        setLoadingReplies(false);
+        setIsLoadingMore(false);
+        isFetchingRef.current = false;
+      }
+    },
+    [activePostId, activePost, decryptReplies, normalizeReplyBasics, getPostId],
+  );
+
   useEffect(() => {
     if (!activePostId) return;
+
+    isFetchingRef.current = false;
+    setPage(1);
+    setHasMore(true);
+    setIsLoadingMore(false);
 
     const cached = repliesCacheRef.current[activePostId];
     if (cached) {
       setReplies(cached);
+      setHasMore(cached.length >= 20);
+      setPage(Math.max(1, Math.ceil(cached.length / 20)));
       return;
     }
 
     if (activePost?.replies?.length) {
+      setReplies([]);
       decryptReplies(activePost.replies, activePost).then((decrypted) => {
-        repliesCacheRef.current[activePostId] = decrypted;
-        setReplies(decrypted);
+        const normalized = normalizeReplyBasics(decrypted);
+        repliesCacheRef.current[activePostId] = normalized;
+        setReplies(normalized);
+        setHasMore(normalized.length >= 20);
       });
       return;
     }
 
     if (loadedRepliesRef.current.has(activePostId)) {
       setReplies([]);
+      setHasMore(false);
       return;
     }
 
+    setReplies([]); // Clear stale replies immediately before fetching from server
+
     if (!visible) return;
 
-    setLoadingReplies(true);
-    api
-      .get(`/posts/${activePostId}/replies`)
-      .then(async (res) => {
-        const decrypted = await decryptReplies(res.data || [], activePost);
-        repliesCacheRef.current[activePostId] = decrypted;
-        loadedRepliesRef.current.add(activePostId);
-        setReplies(decrypted);
-      })
-      .catch((e) => console.error("Failed to load replies", e))
-      .finally(() => setLoadingReplies(false));
-  }, [visible, activePostId, activePost, decryptReplies]);
+    fetchReplies(1, { append: false });
+  }, [visible, activePostId, activePost, decryptReplies, normalizeReplyBasics, fetchReplies]);
+
+  const loadMore = useCallback(() => {
+    if (loadingReplies || isLoadingMore || !hasMore || replies.length === 0 || isFetchingRef.current) return;
+    fetchReplies(page + 1, { append: true });
+  }, [loadingReplies, isLoadingMore, hasMore, page, replies.length, fetchReplies]);
 
   // Notify visibility changes
   useEffect(() => {
@@ -183,6 +272,15 @@ const ThreadBottomSheet = ({
     onClose();
     if (sheetRef.current) sheetRef.current.close();
   }, [onClose]);
+
+  const handleExpandPress = useCallback(() => {
+    if (onExpandReply && activePost) {
+      onExpandReply(activePost, replyText, imageBase64);
+      setReplyText("");
+      setImageBase64(null);
+      handleClose();
+    }
+  }, [onExpandReply, activePost, replyText, imageBase64, handleClose]);
 
   const handleDeletePost = useCallback(
     (deletedPostId) => {
@@ -287,10 +385,25 @@ const ThreadBottomSheet = ({
   // Keep bottom sheet in sync with `visible` prop
   useEffect(() => {
     if (sheetRef.current) {
-      if (visible) sheetRef.current.expand();
+      if (visible) sheetRef.current.snapToIndex(0);
       else sheetRef.current.close();
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const onBackPress = () => {
+      handleClose();
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [visible, handleClose]);
 
   const renderHeader = useMemo(
     () => (
@@ -302,7 +415,7 @@ const ThreadBottomSheet = ({
                 onPress={handleBack}
                 className="p-2 rounded-full bg-white/10 border border-white/20"
               >
-                <ArrowLeft size={16} color="#FFFFFF" />
+                <WrenIcons.ArrowLeft size={16} color="#FFFFFF" />
               </Pressable>
             )}
             <Text className="text-white text-lg font-semibold">Replies</Text>
@@ -311,7 +424,7 @@ const ThreadBottomSheet = ({
             onPress={handleClose}
             className="p-2 rounded-full bg-white/10 border border-white/20"
           >
-            <X size={18} color="#FFFFFF" />
+            <WrenIcons.X size={18} color="#FFFFFF" />
           </Pressable>
         </View>
         {activePost && (
@@ -322,129 +435,56 @@ const ThreadBottomSheet = ({
             onMorePress={setOptionsPost}
           />
         )}
+        {loadingReplies && (
+          <View className="py-4 items-center justify-center">
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          </View>
+        )}
       </View>
     ),
-    [activePost, allowDelete, handleDeletePost, handleBack, handleClose, threadStack.length],
+    [
+      activePost,
+      allowDelete,
+      handleDeletePost,
+      handleBack,
+      handleClose,
+      threadStack.length,
+      loadingReplies,
+    ],
   );
 
   const handleReplyChange = useCallback((text) => {
     setReplyText(text);
   }, []);
 
-  const renderInput = useMemo(
-    () => (
-      <View className="px-4 pt-3 pb-8 bg-[#121212]">
-        <View className="rounded-[26px] bg-[#1B1B1B] border border-white/10 px-4 py-3">
-          {imageBase64 && (
-            <View className="mb-3 rounded-2xl overflow-hidden relative">
-              <Image
-                source={{ uri: imageBase64.uri }}
-                className="w-full h-44"
-                resizeMode="cover"
-              />
-              {uploadProgress !== null && (
-                <View className="absolute inset-0 bg-black/60 items-center justify-center">
-                  <Text
-                    style={{ fontFamily: "WrenSemiBold" }}
-                    className="text-white text-xs font-semibold"
-                  >
-                    {uploadProgress}% Uploading...
-                  </Text>
-                </View>
-              )}
-              <Pressable
-                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/70 items-center justify-center"
-                onPress={() => setImageBase64(null)}
-                disabled={uploadProgress !== null}
-              >
-                <X size={16} color="#fff" />
-              </Pressable>
-            </View>
-          )}
 
-          <View className="flex-row items-end">
-            <BottomSheetTextInput
-              value={replyText}
-              onChangeText={handleReplyChange}
-              placeholder="Write an encrypted reply..."
-              placeholderTextColor="rgba(255,255,255,.45)"
-              multiline
-              maxLength={280}
-              editable={uploadProgress === null}
-              style={{
-                flex: 1,
-                color: "#fff",
-                fontSize: 16,
-                minHeight: 50,
-                maxHeight: 140,
-                paddingTop: 12,
-                paddingBottom: 12,
-                textAlignVertical: "top",
-              }}
-            />
 
-            <Pressable
-              onPress={handlePickImage}
-              disabled={uploadProgress !== null}
-              className={`ml-2 mb-1 p-1 rounded-full ${uploadProgress !== null ? "opacity-50" : "active:opacity-75"
-                }`}
-            >
-              <ImageIcon size={22} color="#fff" />
-            </Pressable>
-
-            <Pressable
-              onPress={handleSubmit}
-              disabled={!canSubmit || submitting || uploadProgress !== null}
-              className="ml-2 h-11 w-11 rounded-full items-center justify-center"
-              style={{ backgroundColor: canSubmit && uploadProgress === null ? colors.primary : "rgba(255, 255, 255, 0.1)" }}
-            >
-              {submitting ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Send size={18} color="#fff" />
-              )}
-            </Pressable>
-          </View>
-
-          <View className="flex-row justify-end mt-2">
-            <Text className="text-white/30 text-xs">
-              {replyText.length}/280
-            </Text>
-          </View>
+  const renderFooter = useMemo(
+    () => {
+      if (!isLoadingMore) return null;
+      return (
+        <View className="py-4 items-center justify-center">
+          <ActivityIndicator size="small" color="#FFFFFF" />
         </View>
-      </View>
-    ),
-    [
-      replyText,
-      imageBase64,
-      canSubmit,
-      submitting,
-      uploadProgress,
-      handlePickImage,
-      handleReplyChange,
-      handleSubmit,
-    ],
+      );
+    },
+    [isLoadingMore],
   );
 
   return (
-    <BottomSheet
-      ref={sheetRef}
-      index={visible ? 0 : -1}
-      snapPoints={snapPoints}
-      enablePanDownToClose={panDownClose}
-      backgroundStyle={{ backgroundColor: "#121212" }}
-      handleIndicatorStyle={{ backgroundColor: "rgba(255,255,255,0.3)" }}
-      keyboardBehavior="interactive"
-      keyboardBlurBehavior="restore"
-      android_keyboardInputMode="adjustResize"
-      enableBlurKeyboardOnGesture={true}
-      onClose={handleClose}
-    >
-      {loadingReplies ? (
-        <BottomSheetView className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#FFFFFF" />
-        </BottomSheetView>
-      ) : (
+    <>
+      <BottomSheet
+        ref={sheetRef}
+        index={visible ? 0 : -1}
+        snapPoints={snapPoints}
+        enablePanDownToClose={panDownClose}
+        backgroundStyle={{ backgroundColor: "#121212" }}
+        handleIndicatorStyle={{ backgroundColor: "rgba(255,255,255,0.3)" }}
+        backdropComponent={renderBackdrop}
+        onClose={handleClose}
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+      >
         <BottomSheetFlatList
           data={replies}
           keyExtractor={(item) =>
@@ -463,19 +503,120 @@ const ThreadBottomSheet = ({
             />
           )}
           ListHeaderComponent={renderHeader}
-          ListFooterComponent={renderInput} // ← Important
+          ListFooterComponent={renderFooter}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           nestedScrollEnabled
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
           contentContainerStyle={{
             paddingHorizontal: 12,
             paddingTop: 8,
-            paddingBottom: insets.bottom + 180, // Extra space for keyboard + input
+            paddingBottom: insets.bottom + 16,
           }}
           style={{ flex: 1 }}
         />
-      )}
+
+        <View style={{ paddingBottom: Math.max(8, insets.bottom) }} className="px-4 pt-3 bg-[#121212]">
+          <View className={`bg-[#1B1B1B] border border-white/10 px-4 py-2 ${(isMultiline || !!imageBase64) ? "rounded-2xl" : "rounded-full"}`}>
+            {imageBase64 && (
+              <View className="mb-3 rounded-2xl overflow-hidden relative">
+                <Image
+                  source={{ uri: imageBase64.uri }}
+                  className="w-full h-28"
+                  resizeMode="cover"
+                />
+                {uploadProgress !== null && (
+                  <View className="absolute inset-0 bg-black/60 items-center justify-center">
+                    <Text
+                      style={{ fontFamily: "WrenSemiBold" }}
+                      className="text-white text-xs font-semibold"
+                    >
+                      {uploadProgress}% Uploading...
+                    </Text>
+                  </View>
+                )}
+                <Pressable
+                  className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/70 items-center justify-center"
+                  onPress={() => setImageBase64(null)}
+                  disabled={uploadProgress !== null}
+                >
+                  <WrenIcons.X size={16} color="#fff" />
+                </Pressable>
+              </View>
+            )}
+
+            <View className="flex-row items-end">
+              {onExpandReply && isFocused && (
+                <Pressable
+                  onPress={handleExpandPress}
+                  className="mr-2 mb-1.5 p-1 rounded-full active:opacity-75"
+                >
+                  <WrenIcons.Maximize2 size={18} color="#fff" />
+                </Pressable>
+              )}
+
+              <BottomSheetTextInput
+                onFocus={() => {
+                  setIsFocused(true);
+                  requestAnimationFrame(() => {
+                    sheetRef.current?.expand();
+                  });
+                }}
+                onBlur={() => setIsFocused(false)}
+                value={replyText}
+                onChangeText={handleReplyChange}
+                placeholder="Write an encrypted reply..."
+                placeholderTextColor="rgba(255,255,255,.45)"
+                multiline
+                maxLength={280}
+                editable={uploadProgress === null}
+                onContentSizeChange={(e) => {
+                  const contentHeight = e.nativeEvent.contentSize.height;
+                  setIsMultiline(contentHeight > 36);
+                }}
+                style={{
+                  flex: 1,
+                  color: "#fff",
+                  fontSize: 15,
+                  minHeight: 36,
+                  maxHeight: 140,
+                  paddingTop: 6,
+                  paddingBottom: 6,
+                  textAlignVertical: "top",
+                }}
+              />
+
+              <View className="flex-row items-center gap-2 mb-0.5">
+                {isFocused && (
+                  <WrenIcons.CharacterProgressRing currentLength={replyText.length} />
+                )}
+
+                <Pressable
+                  onPress={handlePickImage}
+                  disabled={uploadProgress !== null}
+                  className={`p-1 rounded-full ${uploadProgress !== null ? "opacity-50" : "active:opacity-75"}`}
+                >
+                  <WrenIcons.Image size={20} color="#fff" />
+                </Pressable>
+
+                <Pressable
+                  onPress={handleSubmit}
+                  disabled={!canSubmit || submitting || uploadProgress !== null}
+                  className="h-8 w-8 rounded-full items-center justify-center"
+                  style={{ backgroundColor: canSubmit && uploadProgress === null ? colors.primary : "rgba(255, 255, 255, 0.1)" }}
+                >
+                  {submitting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <WrenIcons.Send size={14} color="#fff" />
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </BottomSheet>
       <PostOptionsSheet
         visible={!!optionsPost}
         post={optionsPost}
@@ -486,7 +627,7 @@ const ThreadBottomSheet = ({
         onClose={() => setOptionsPost(null)}
         onDeleted={handleDeletePost}
       />
-    </BottomSheet>
+    </>
   );
 };
 

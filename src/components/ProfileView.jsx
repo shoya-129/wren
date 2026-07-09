@@ -90,6 +90,9 @@ const ProfileView = ({
   );
 
   const [posts, setPosts] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [canViewPosts, setCanViewPosts] = useState(true);
   const [followLoading, setFollowLoading] = useState(false);
   const [showSecuritySheet, setShowSecuritySheet] = useState(false);
@@ -148,6 +151,7 @@ const ProfileView = ({
         if (isOwnProfile) {
           profileRes = await api.get("/user/profile", {
             headers: { "Cache-Control": "no-cache" },
+            params: { page: 1, limit: 10 },
           });
           statsRes = await fetchStatsSafely("/user/stats");
         } else {
@@ -168,7 +172,10 @@ const ProfileView = ({
               try {
                 const nextProfileRes = await api.get(
                   `/user/profile/${encodeURIComponent(candidate)}`,
-                  { headers: { "Cache-Control": "no-cache" } },
+                  {
+                    headers: { "Cache-Control": "no-cache" },
+                    params: { page: 1, limit: 10 },
+                  },
                 );
                 const nextStatsRes = await fetchStatsSafely(
                   `/user/stats/${encodeURIComponent(candidate)}`,
@@ -233,6 +240,8 @@ const ProfileView = ({
         );
         setCanViewPosts(profilePayload.canViewPosts !== false);
         setPosts(decryptedPosts);
+        setPage(1);
+        setHasMore(decryptedPosts.length >= 10);
 
         if (!isOwnProfile && nextUser?.uid) {
           const followed = rawPosts.some((item) => !!item?.encryptedFeedKey);
@@ -257,6 +266,86 @@ const ProfileView = ({
       updateUser,
     ],
   );
+
+  const fetchProfilePosts = useCallback(
+    async (pageNumber = 1, { append = false } = {}) => {
+      if (isHydrating) return;
+      if (isOwnProfile && !currentUser) return;
+      if (!isOwnProfile && !targetUsername && !targetUid) return;
+
+      const limit = 10;
+      setIsLoadingMore(true);
+
+      try {
+        let profileRes = null;
+        const identifier = targetUsername || resolvedUserId || targetUid;
+
+        if (isOwnProfile) {
+          profileRes = await api.get("/user/profile", {
+            headers: { "Cache-Control": "no-cache" },
+            params: { page: pageNumber, limit },
+          });
+        } else if (identifier) {
+          profileRes = await api.get(
+            `/user/profile/${encodeURIComponent(identifier)}`,
+            {
+              headers: { "Cache-Control": "no-cache" },
+              params: { page: pageNumber, limit },
+            },
+          );
+        }
+
+        if (profileRes) {
+          const profilePayload = profileRes.data || {};
+          const rawPosts = profilePayload.posts || [];
+          const decryptedPosts = await decryptPosts(rawPosts);
+
+          if (append) {
+            setPosts((prev) => {
+              const map = new Map();
+              for (const p of prev) map.set(p.postId, p);
+              for (const p of decryptedPosts) {
+                map.set(p.postId, { ...(map.get(p.postId) || {}), ...p });
+              }
+              return Array.from(map.values());
+            });
+          } else {
+            setPosts(decryptedPosts);
+          }
+
+          setHasMore(decryptedPosts.length >= limit);
+          setPage(pageNumber);
+        }
+      } catch (e) {
+        console.error("Failed to load profile posts page " + pageNumber, e);
+      } finally {
+        setIsLoadingMore(false);
+      }
+    },
+    [
+      isHydrating,
+      isOwnProfile,
+      currentUser,
+      targetUsername,
+      targetUid,
+      resolvedUserId,
+      decryptPosts,
+    ],
+  );
+
+  const loadMore = useCallback(() => {
+    if (loading || isLoadingMore || !hasMore || posts.length === 0) return;
+    fetchProfilePosts(page + 1, { append: true });
+  }, [loading, isLoadingMore, hasMore, page, posts.length, fetchProfilePosts]);
+
+  const renderFooter = useCallback(() => {
+    if (!isLoadingMore) return null;
+    return (
+      <View className="py-4 items-center">
+        <ActivityIndicator size="small" color={colors.primary} />
+      </View>
+    );
+  }, [isLoadingMore]);
 
   useFocusEffect(
     useCallback(() => {
@@ -667,6 +756,9 @@ const ProfileView = ({
         showsVerticalScrollIndicator={false}
         onRefresh={handleRefresh}
         refreshing={refreshing}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={renderFooter}
         contentContainerStyle={{ paddingBottom: 110 }}
       />
 

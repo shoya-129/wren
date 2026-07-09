@@ -29,7 +29,7 @@ const isReplyRecord = (item) => {
   );
 };
 
-const Feed = forwardRef(({ onThreadVisibilityChange }, ref) => {
+const Feed = forwardRef(({ onThreadVisibilityChange, onReplyPress }, ref) => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -233,6 +233,7 @@ const Feed = forwardRef(({ onThreadVisibilityChange }, ref) => {
           onClose={closeThread}
           onAddReply={handleAddReply}
           onSheetVisibilityChange={handleSheetVisibilityChange}
+          onExpandReply={onReplyPress}
         />
       )}
       <PostOptionsSheet

@@ -1,13 +1,25 @@
 import BottomSheet, {
   BottomSheetFlatList,
   BottomSheetView,
+  BottomSheetBackdrop,
 } from "@gorhom/bottom-sheet";
+
+const renderBackdrop = (props) => (
+  <BottomSheetBackdrop
+    {...props}
+    appearsOnIndex={0}
+    disappearsOnIndex={-1}
+    opacity={0.5}
+    pressBehavior="close"
+  />
+);
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { VerifiedIcon as Verified, UserIcon as User, UserMinusIcon as UserMinus, XIcon as X } from "../lib/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  BackHandler,
   Image,
   Pressable,
   Text,
@@ -37,6 +49,21 @@ const UserConnectionsSheet = ({
   const [hasNextPage, setHasNextPage] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [revokingId, setRevokingId] = useState(null);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const onBackPress = () => {
+      closeSheet();
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [visible, closeSheet]);
 
   const cacheKey = `${type}_${userId}_page_1`;
   const title = type === "followers" ? "Followers" : "Following";
@@ -212,6 +239,7 @@ const UserConnectionsSheet = ({
       enablePanDownToClose
       backgroundStyle={{ backgroundColor: "#121212" }}
       handleIndicatorStyle={{ backgroundColor: "rgba(255,255,255,0.3)" }}
+      backdropComponent={renderBackdrop}
       onClose={closeSheet}
     >
       <BottomSheetFlatList

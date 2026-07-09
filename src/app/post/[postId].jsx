@@ -92,6 +92,9 @@ export default function SharedPostScreen() {
     router.back();
   }, [router]);
 
+
+
+
   return (
     <SafeAreaView className="flex-1 bg-black">
       <View className="flex-row items-center gap-3 border-b border-white/10 px-4 py-3">
@@ -104,6 +107,14 @@ export default function SharedPostScreen() {
         <Text className="text-white text-lg font-semibold">Shared Post</Text>
       </View>
 
+      <View className="h-screen w-full items-center justify-center">
+        <Pressable
+          onPress={() => setThreadVisible(true)}
+          className="h-10 w-10 items-center justify-center rounded-full bg-primary"
+        >
+          <Text className="text-white font-semibold">Open Post</Text>
+        </Pressable>
+      </View>
       {loading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color={colors.primary} />
