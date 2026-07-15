@@ -216,8 +216,9 @@ const ProfileView = ({
           }
         }
 
-        const profilePayload = profileRes?.data || {};
-        const statsPayload = statsRes?.data || {};
+        const isCachedEntry = !!(profileRes && profileRes.cachedAt);
+        const profilePayload = isCachedEntry ? (profileRes?.data || {}) : (profileRes?.data || {});
+        const statsPayload = isCachedEntry ? (profileRes?.stats || {}) : (statsRes?.data || {});
         const nextUser = profilePayload.user || statsPayload.user || null;
         const rawPosts = profilePayload.posts || [];
         const decryptedPosts = await decryptPosts(rawPosts);
@@ -722,8 +723,8 @@ const ProfileView = ({
     <SafeAreaView className="flex-1 bg-black">
       <FlatList
         data={canViewPosts ? posts : []}
-        keyExtractor={(item) =>
-          item.postId?.toString() ?? Math.random().toString()}
+        keyExtractor={(item, index) =>
+          `${item.postId?.toString() ?? "post"}-${index}`}
         renderItem={({ item }) => (
           <View className="px-5">
             <PostCard

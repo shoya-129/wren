@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator,
   FlatList,
@@ -29,9 +30,15 @@ import { showToast } from "../../utils/toast";
 
 export default function NotificationsScreen() {
   const { feedKey, activities, addActivity } = useUser();
-  const [requests, setRequests] = useState([]);
+  const params = useLocalSearchParams();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("requests"); // "requests" | "activity"
-  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (params?.tab) {
+      setActiveTab(params.tab);
+    }
+  }, [params?.tab]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [actionInProgress, setActionInProgress] = useState({});
   const [islandState, setIslandState] = useState({
@@ -48,53 +55,43 @@ export default function NotificationsScreen() {
     onComplete: null,
   });
 
-  // 1. Load cached follow requests on mount
-  useEffect(() => {
-    const loadCachedRequests = async () => {
-      try {
-        const cached = await AsyncStorage.getItem("cached_follow_requests");
-        if (cached) {
-          setRequests(JSON.parse(cached));
-        }
-      } catch (e) {
-        console.error("Error loading cached requests:", e);
-      }
-    };
-    loadCachedRequests();
-  }, []);
-
-  // 2. Fetch fresh pending requests from API
-  const fetchPendingRequests = useCallback(async (showLoading = true) => {
-    if (showLoading) setIsLoading(true);
-    try {
+  const { data: requests = [], isLoading, refetch } = useQuery({
+    queryKey: ["pendingRequests"],
+    queryFn: async () => {
       const res = await api.get("/user/follow/pending");
-      setRequests(res.data);
       await AsyncStorage.setItem(
         "cached_follow_requests",
-        JSON.stringify(res.data),
+        JSON.stringify(res.data || []),
       );
-    } catch (e) {
-      console.error("Error fetching pending requests:", e);
-      showToast("Failed to load pending follow requests.");
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
+      return res.data || [];
+    },
+  });
+
+  // Asynchronous cache hydration for offline resilience
+  useEffect(() => {
+    const loadCached = async () => {
+      try {
+        const cached = await AsyncStorage.getItem("cached_follow_requests");
+        if (cached && !requests.length) {
+          queryClient.setQueryData(["pendingRequests"], JSON.parse(cached));
+        }
+      } catch {}
+    };
+    loadCached();
+  }, [requests.length, queryClient]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchPendingRequests(true);
-    }, [fetchPendingRequests]),
+      refetch();
+    }, [refetch]),
   );
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
     if (activeTab === "requests") {
-      fetchPendingRequests(false);
-    } else {
-      setIsRefreshing(false);
+      await refetch();
     }
+    setIsRefreshing(false);
   };
 
   const handleAccept = async (item) => {
@@ -106,15 +103,13 @@ export default function NotificationsScreen() {
       return;
     }
 
-    const originalRequests = [...requests];
+    const originalRequests = queryClient.getQueryData(["pendingRequests"]) || [];
     setActionInProgress((prev) => ({ ...prev, [followerId]: "accept" }));
 
-    setRequests((prev) => {
-      const updated = prev.filter((r) => r.followerId !== followerId);
-      AsyncStorage.setItem(
-        "cached_follow_requests",
-        JSON.stringify(updated),
-      ).catch(() => { });
+    // Optimistically update
+    queryClient.setQueryData(["pendingRequests"], (prev) => {
+      const updated = (prev || []).filter((r) => r.followerId !== followerId);
+      AsyncStorage.setItem("cached_follow_requests", JSON.stringify(updated)).catch(() => {});
       return updated;
     });
 
@@ -153,7 +148,7 @@ export default function NotificationsScreen() {
       }));
     } catch (err) {
       console.error("Error accepting follow request:", err);
-      setRequests(originalRequests);
+      queryClient.setQueryData(["pendingRequests"], originalRequests);
       AsyncStorage.setItem(
         "cached_follow_requests",
         JSON.stringify(originalRequests),
@@ -180,15 +175,13 @@ export default function NotificationsScreen() {
     const { followerId, username } = item;
     if (actionInProgress[followerId]) return;
 
-    const originalRequests = [...requests];
+    const originalRequests = queryClient.getQueryData(["pendingRequests"]) || [];
     setActionInProgress((prev) => ({ ...prev, [followerId]: "reject" }));
 
-    setRequests((prev) => {
-      const updated = prev.filter((r) => r.followerId !== followerId);
-      AsyncStorage.setItem(
-        "cached_follow_requests",
-        JSON.stringify(updated),
-      ).catch(() => { });
+    // Optimistically update
+    queryClient.setQueryData(["pendingRequests"], (prev) => {
+      const updated = (prev || []).filter((r) => r.followerId !== followerId);
+      AsyncStorage.setItem("cached_follow_requests", JSON.stringify(updated)).catch(() => {});
       return updated;
     });
 
@@ -202,7 +195,7 @@ export default function NotificationsScreen() {
       );
     } catch (e) {
       console.error("Error rejecting follow request:", e);
-      setRequests(originalRequests);
+      queryClient.setQueryData(["pendingRequests"], originalRequests);
       AsyncStorage.setItem(
         "cached_follow_requests",
         JSON.stringify(originalRequests),
@@ -268,18 +261,19 @@ export default function NotificationsScreen() {
               className={`text-sm font-semibold ${activeTab === "activity" ? "text-white" : "text-white/60"
                 }`}
             >
-              Security Log
+              Activities
             </Text>
           </Pressable>
         </View>
 
         {/* Content List */}
         <FlatList
-          data={activeTab === "requests" ? requests : activities}
-          keyExtractor={(item) => item.followerId || item.id}
-          renderItem={
-            activeTab === "requests" ? renderRequestItem : renderActivityItem
-          }
+          data={activeTab === "requests" ? (requests || []) : (activities || [])}
+          keyExtractor={(item, index) => `${item?.followerId || item?.id || "key"}-${index}`}
+          renderItem={({ item }) => {
+            if (!item) return null;
+            return activeTab === "requests" ? renderRequestItem({ item }) : renderActivityItem({ item });
+          }}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl

@@ -244,7 +244,7 @@ const UserConnectionsSheet = ({
     >
       <BottomSheetFlatList
         data={items}
-        keyExtractor={(item) => item.uid}
+        keyExtractor={(item, index) => `${item.uid}-${index}`}
         renderItem={renderItem}
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.35}

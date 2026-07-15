@@ -51,12 +51,8 @@ export default function SharedPostScreen() {
       setLoading(true);
       setNotFound(false);
       try {
-        const res = await api.get("/posts/feed", {
-          params: { page: 1, limit: 100 },
-        });
-        const found = (res.data || []).find(
-          (item) => String(item.postId) === String(postId),
-        );
+        const res = await api.get(`/posts/${postId}`);
+        const found = res.data;
 
         if (!found) {
           if (isActive) {
@@ -110,7 +106,7 @@ export default function SharedPostScreen() {
       <View className="h-screen w-full items-center justify-center">
         <Pressable
           onPress={() => setThreadVisible(true)}
-          className="h-10 w-10 items-center justify-center rounded-full bg-primary"
+          className="h-10 px-2 items-center justify-center rounded-full bg-primary"
         >
           <Text className="text-white font-semibold">Open Post</Text>
         </Pressable>

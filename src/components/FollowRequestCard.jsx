@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
 import { CheckIcon as Check, UserIcon as User, XIcon as X, VerifiedIcon as Verified } from "../lib/icons";
 import colors from "../lib/colors.json";
 
@@ -11,8 +11,16 @@ const FollowRequestCard = ({ item, onAccept, onReject, actionType }) => {
     <View className="flex-row items-center justify-between border-b border-white/20 py-4">
       {/* Profile Info */}
       <View className="flex-row items-center gap-3 flex-1 mr-3">
-        <View className="w-10 h-10 rounded-full bg-white/10 border border-white/20 items-center justify-center">
-          <User size={18} color={colors.primary} strokeWidth={2} />
+        <View className="w-10 h-10 rounded-full bg-white/10 border border-white/20 items-center justify-center overflow-hidden">
+          {item.avatar ? (
+            <Image
+              source={{ uri: item.avatar }}
+              className="w-full h-full"
+              resizeMode="cover"
+            />
+          ) : (
+            <User size={18} color={colors.primary} strokeWidth={2} />
+          )}
         </View>
         <View className="flex-1">
           <View className="flex-row items-center gap-1">

@@ -3,7 +3,7 @@ import { ActivityIndicator, FlatList, RefreshControl, View } from "react-native"
 import { useUser } from "../context/UserContext";
 import colors from "../lib/colors.json";
 import api from "../utils/api";
-import { cacheProfiles } from "../utils/cache";
+import { cacheProfiles, getCachedFeed, saveFeedToCache } from "../utils/cache";
 import { showToast } from "../utils/toast";
 import { decryptPostsOrReplies } from "../utils/wrencryption";
 import PostCard from "./PostCard";
@@ -91,6 +91,7 @@ const Feed = forwardRef(({ onThreadVisibilityChange, onReplyPress }, ref) => {
           });
         } else {
           setPosts(decrypted);
+          saveFeedToCache(decrypted, null).catch(console.error);
         }
 
         setHasMore(decrypted.length >= limit);
@@ -119,8 +120,27 @@ const Feed = forwardRef(({ onThreadVisibilityChange, onReplyPress }, ref) => {
   );
 
   useEffect(() => {
-    fetchFeed(1, { append: false });
-  }, []);
+    if (isHydrating) return;
+
+    (async () => {
+      try {
+        const cached = await getCachedFeed({
+          currentUserUid: user?.uid,
+          feedKey,
+          publicKey,
+          privateKey,
+        });
+        if (cached && cached.length > 0) {
+          setPosts(cached);
+          setLoading(false);
+        }
+      } catch (e) {
+        console.warn("Failed to load feed from cache:", e);
+      }
+
+      fetchFeed(1, { append: false });
+    })();
+  }, [isHydrating, user?.uid, feedKey, publicKey, privateKey, fetchFeed]);
 
   useImperativeHandle(ref, () => ({
     addPost(newPost) {
@@ -206,7 +226,7 @@ const Feed = forwardRef(({ onThreadVisibilityChange, onReplyPress }, ref) => {
       <FlatList
         ref={flatListRef}
         data={posts}
-        keyExtractor={(item) => item.postId?.toString() ?? Math.random().toString()}
+        keyExtractor={(item, index) => `${item.postId?.toString() ?? "post"}-${index}`}
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -244,7 +264,5 @@ const Feed = forwardRef(({ onThreadVisibilityChange, onReplyPress }, ref) => {
     </View>
   );
 });
-
-Feed.displayName = "Feed";
 
 export default Feed;

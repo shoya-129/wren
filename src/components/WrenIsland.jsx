@@ -258,7 +258,13 @@ export default function WrenIsland({
             className={`text-[13px] font-semibold tracking-[0.1px] ${isErrorState ? "text-red-500" : "text-white"}`}
             style={{ opacity: textOpacity }}
           >
-            {isErrorState ? errorText : step2Text}
+            {isErrorState ? (
+              typeof errorText === "object" && errorText !== null
+                ? Object.values(errorText).join(", ")
+                : String(errorText || "")
+            ) : (
+              step2Text
+            )}
           </Animated.Text>
         </Animated.View>
       </Animated.View>

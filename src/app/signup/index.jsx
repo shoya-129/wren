@@ -1,5 +1,4 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useRef, useState } from "react";
@@ -23,6 +22,7 @@ import { usePasswordStrength } from "../../hooks/usePasswordStrength";
 import colors from "../../lib/colors.json";
 import { ArrowLeftIcon, CheckIcon, LockIcon, MailIcon, ShieldAlertIcon, UserIcon, UserRoundIcon, UserRoundKeyIcon } from "../../lib/icons";
 import api, { setApiAuthToken } from "../../utils/api";
+import { registerForPushNotificationsAsync } from "../../utils/notifications";
 import {
   createMasterKey,
   encryptAsymmetric,
@@ -103,6 +103,13 @@ export default function Signup() {
     });
 
     try {
+      let pushToken = null;
+      try {
+        pushToken = await registerForPushNotificationsAsync();
+      } catch (err) {
+        console.warn("Could not get push token before signup:", err);
+      }
+
       const { masterKey, salt } = await createMasterKey(password);
       const { publicKey, privateKey } = await generateKeyPair(masterKey);
       const feedKey = await generateFeedKey();
@@ -120,6 +127,7 @@ export default function Signup() {
           encryptedFeedKey,
           salt,
           publicKey,
+          pushToken,
         },
         { skipAuth: true },
       );
@@ -154,7 +162,12 @@ export default function Signup() {
       });
     } catch (e) {
       console.error("Signup failed", e);
-      const errMsg = e?.response?.data?.message || "Registration failed. Please try again.";
+      
+      const rawMsg = e?.response?.data?.message || "Registration failed. Please try again.";
+      const errMsg = typeof rawMsg === "object" && rawMsg !== null
+        ? Object.values(rawMsg).join(", ")
+        : String(rawMsg);
+
       setIslandState({
         visible: true,
         status: "error",

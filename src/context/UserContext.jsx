@@ -1,10 +1,17 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
+import { useRouter } from "expo-router";
 import api, {
   clearApiAuthToken,
   setApiAuthToken,
   setApiUnauthorizedHandler,
 } from "../utils/api";
+import {
+  initializeBackgroundTask,
+  unregisterBackgroundTask,
+} from "../utils/bgTask";
+import { registerForPushNotificationsAsync } from "../utils/notifications";
+import * as Notifications from "expo-notifications";
 import {
   createContext,
   useCallback,
@@ -75,6 +82,7 @@ function persistToken(nextToken) {
 }
 
 export function UserProvider({ children }) {
+  const router = useRouter();
   const mountedRef = useRef(false);
   const [isHydrating, setIsHydrating] = useState(true);
 
@@ -188,7 +196,93 @@ export function UserProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    if (isLoggedIn) {
+      const registerPush = async () => {
+        try {
+          const pushToken = await registerForPushNotificationsAsync();
+          if (pushToken) {
+            await api.patch("/user/push-token", { pushToken });
+          }
+        } catch (error) {
+          console.warn("Failed to register/upload push token:", error);
+        }
+      };
+      registerPush();
+    }
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const subscription = Notifications.addNotificationReceivedListener((notification) => {
+      const { title, body, data } = notification.request.content;
+
+      let type = null;
+      const lowerTitle = (title || "").toLowerCase();
+      if (lowerTitle.includes("like")) {
+        type = "post_liked";
+      } else if (lowerTitle.includes("dislike")) {
+        type = "post_disliked";
+      } else if (lowerTitle.includes("comment") || lowerTitle.includes("reply")) {
+        type = "post_commented";
+      } else if (lowerTitle.includes("follow")) {
+        type = "follow_request_received";
+      }
+
+      if (type) {
+        addActivity(type, data?.senderUsername || "system", body, {
+          senderAvatar: data?.senderAvatar || null,
+          postId: data?.postId || null,
+        });
+      }
+    });
+
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const { title, body, data } = response.notification.request.content;
+      
+      let type = null;
+      const lowerTitle = (title || "").toLowerCase();
+      if (lowerTitle.includes("like")) {
+        type = "post_liked";
+      } else if (lowerTitle.includes("dislike")) {
+        type = "post_disliked";
+      } else if (lowerTitle.includes("comment") || lowerTitle.includes("reply")) {
+        type = "post_commented";
+      } else if (lowerTitle.includes("follow")) {
+        type = "follow_request_received";
+      }
+
+      if (type) {
+        addActivity(type, data?.senderUsername || "system", body, {
+          senderAvatar: data?.senderAvatar || null,
+          postId: data?.postId || null,
+        });
+      }
+
+      // Route the user to the correct tab in notifications
+      if (lowerTitle.includes("follow")) {
+        router.push({
+          pathname: "/(tabs)/notifications",
+          params: { tab: "requests" },
+        });
+      } else {
+        router.push({
+          pathname: "/(tabs)/notifications",
+          params: { tab: "activity" },
+        });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+      responseSubscription.remove();
+    };
+  }, [isLoggedIn, addActivity]);
+
+  useEffect(() => {
     setApiUnauthorizedHandler(async () => {
+      unregisterBackgroundTask().catch(console.error);
+
       await Promise.all([
         safeDeleteSecureItem(STORAGE_KEYS.privateKey),
         safeDeleteSecureItem(STORAGE_KEYS.publicKey),
@@ -233,7 +327,7 @@ export function UserProvider({ children }) {
     });
   }, []);
 
-  const addActivity = async (type, targetName, description) => {
+  const addActivity = async (type, targetName, description, metadata = null) => {
     setActivities((prev) => {
       const next = [
         {
@@ -242,6 +336,7 @@ export function UserProvider({ children }) {
           targetName,
           description,
           createdAt: new Date().toISOString(),
+          metadata,
         },
         ...prev.slice(0, 19),
       ];
@@ -429,11 +524,17 @@ export function UserProvider({ children }) {
       setPrivateKey(nextPrivateKey ?? null);
       setPublicKey(nextPublicKey ?? null);
       setFeedKey(nextFeedKey ?? null);
+
+      if (normalizedToken) {
+        initializeBackgroundTask().catch(console.error);
+      }
     },
     [updateUser],
   );
 
   const logout = async () => {
+    unregisterBackgroundTask().catch(console.error);
+
     await Promise.all([
       safeDeleteSecureItem(STORAGE_KEYS.privateKey),
       safeDeleteSecureItem(STORAGE_KEYS.publicKey),

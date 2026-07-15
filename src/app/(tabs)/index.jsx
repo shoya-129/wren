@@ -13,7 +13,6 @@ import { useUser } from "../../context/UserContext";
 import colors from "../../lib/colors.json";
 import WrenIcons, {
   FileTextIcon as FileText,
-  Image as ImageIcon,
   LockIcon as Lock,
   PlusIcon as Plus,
   SendIcon as Send,
@@ -27,6 +26,8 @@ import api from "../../utils/api";
 import { encryptData } from "../../utils/encryption";
 import { pickImageBase64, uploadEncryptedMedia } from "../../utils/media";
 import { showToast } from "../../utils/toast";
+import * as Notifications from "expo-notifications";
+import { ImagesIcon } from "lucide-react-native";
 
 const getImageUri = (media) => {
   if (!media || typeof media !== "string") return null;
@@ -95,23 +96,75 @@ export default function HomeScreen() {
     const contentToPost = postContent.trim();
     const mediaToPost = imageBase64;
 
+    const NOTIFICATION_ID = "post-upload-progress";
+
+    const safeDismissNotification = async (id) => {
+      try {
+        await Notifications.dismissNotificationAsync(id);
+      } catch (err) {
+        console.warn("safeDismissNotification failed:", err);
+      }
+    };
+
+    const safeScheduleNotification = async (title, body, identifier) => {
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title,
+            body,
+          },
+          trigger: null,
+          identifier,
+        });
+      } catch (err) {
+        console.warn("safeScheduleNotification failed:", err);
+      }
+    };
+
+    const updateProgressNotification = async (progressText, dismissFirst = false) => {
+      if (dismissFirst) {
+        await safeDismissNotification(NOTIFICATION_ID);
+      }
+      await safeScheduleNotification("Wren Post Upload", progressText, NOTIFICATION_ID);
+    };
+
     // Perform encryption and API call
     (async () => {
       try {
         setUploadProgress(0); // Starts showing progress loader
+        await updateProgressNotification("Encrypting content...");
+
         const encryptedContent = await encryptData(contentToPost, feedKey);
         let encryptedMedia = null;
 
         if (mediaToPost) {
+          let currentPercent = 0;
+          let lastNotificationPercent = -20; // Ensure it triggers first time
           encryptedMedia = await uploadEncryptedMedia(
             mediaToPost,
             feedKey,
-            setUploadProgress,
+            async (percent) => {
+              let nextPercent;
+              if (typeof percent === "function") {
+                nextPercent = percent(currentPercent);
+              } else {
+                nextPercent = percent;
+              }
+              currentPercent = nextPercent;
+              setUploadProgress(nextPercent);
+              
+              // Only update notification every 20% to prevent queue congestion and crashes
+              if (nextPercent - lastNotificationPercent >= 20 || nextPercent === 100) {
+                lastNotificationPercent = nextPercent;
+                await updateProgressNotification(`Uploading media: ${nextPercent}%`, true);
+              }
+            },
           );
         }
 
         const isReply = !!replyingToPost;
         const endpoint = isReply ? `/posts/${replyingToPost.postId}/comment` : "/posts";
+        await updateProgressNotification("Publishing secure post...", true);
         const response = await api.post(endpoint, {
           encryptedContent,
           encryptedMedia,
@@ -123,12 +176,14 @@ export default function HomeScreen() {
             "reply_created",
             replyingToPost?.author?.username ?? "self",
             "You replied to a post",
+            { postId: replyingToPost?.postId || response?.data?.postId, senderAvatar: user?.avatar }
           );
         } else {
           await addActivity(
             "post_created",
             "self",
             "You published a secure end-to-end encrypted post",
+            { postId: response?.data?.postId, senderAvatar: user?.avatar }
           );
         }
 
@@ -139,9 +194,17 @@ export default function HomeScreen() {
         setReplyingToPost(null);
         bottomSheetRef.current?.close();
 
+        // Dismiss progress and show success notification safely
+        await safeDismissNotification(NOTIFICATION_ID);
+        await safeScheduleNotification(
+          "Wren Post",
+          isReply ? "Reply published successfully!" : "Post published successfully!",
+          "post-upload-success"
+        );
+
         // Hydrate decrypted post locally so it renders immediately without refresh
         const newPostObj = {
-          ...response.data,
+          ...(response?.data || {}),
           content: contentToPost,
           media: mediaToPost ? mediaToPost.uri : null,
           isDecrypted: true,
@@ -165,6 +228,14 @@ export default function HomeScreen() {
         console.error("Error creating post/reply:", e);
         showToast("Could not publish your post. Please try again.");
         setUploadProgress(null);
+
+        // Dismiss progress and show error notification safely
+        await safeDismissNotification(NOTIFICATION_ID);
+        await safeScheduleNotification(
+          "Wren Post",
+          "Failed to publish post.",
+          "post-upload-error"
+        );
       }
     })();
   };
@@ -458,7 +529,7 @@ export default function HomeScreen() {
             step1Text="Encrypting Post"
             step2Text="Encrypted & Published"
             step1IconLeft={<FileText size={16} color={colors.primary} strokeWidth={2.8} />}
-            step1IconRight={<ImageIcon size={16} color="#10B981" strokeWidth={2.8} />}
+            step1IconRight={<ImagesIcon size={16} color="#10B981" strokeWidth={2.8} />}
             step2Icon={<Lock size={15} color="#10B981" strokeWidth={3} />}
             step1Width={220}
             step2Width={240}

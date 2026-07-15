@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useState } from "react";
+import { registerForPushNotificationsAsync } from "../../utils/notifications";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -60,11 +61,21 @@ export default function Login() {
     });
 
     try {
+      // 1. Obtain Expo push token (if permission allowed, else fail silently to allow login)
+      let pushToken = null;
+      try {
+        pushToken = await registerForPushNotificationsAsync();
+      } catch (err) {
+        console.warn("Could not get push token before login:", err);
+      }
+
+      // 2. Call auth login API sending the pushToken
       const res = await api.post(
         "/auth/login",
         {
           identifier,
           password,
+          pushToken,
         },
         { skipAuth: true },
       );
@@ -107,7 +118,12 @@ export default function Login() {
       });
     } catch (e) {
       console.error("Login failed", e);
-      const errMsg = e?.response?.data?.message || "Please check your credentials and try again.";
+      
+      const rawMsg = e?.response?.data?.message || "Please check your credentials and try again.";
+      const errMsg = typeof rawMsg === "object" && rawMsg !== null
+        ? Object.values(rawMsg).join(", ")
+        : String(rawMsg);
+
       setIslandState({
         visible: true,
         status: "error",
