@@ -15,7 +15,7 @@ import FollowRequestCard from "../../components/FollowRequestCard";
 import SecurityActivityCard from "../../components/SecurityActivityCard";
 import WrenIsland from "../../components/WrenIsland";
 import { useUser } from "../../context/UserContext";
-import { updateCachedProfile } from "../../utils/cache";
+import { updateCachedProfile, saveProfileToCache } from "../../utils/cache";
 import {
   BellIcon,
   KeyIcon,
@@ -79,6 +79,30 @@ export default function NotificationsScreen() {
     };
     loadCached();
   }, [requests.length, queryClient]);
+
+  // Pre-cache user profiles of requesters to make navigation instant
+  useEffect(() => {
+    if (requests && requests.length > 0) {
+      for (const item of requests) {
+        saveProfileToCache(
+          item.followerId,
+          {
+            user: {
+              uid: item.followerId,
+              username: item.username,
+              name: item.name,
+              avatar: item.avatar,
+              verified: item.verified,
+              publicKey: item.publicKey,
+            },
+            posts: [],
+          },
+          {},
+          item.username,
+        ).catch(() => {});
+      }
+    }
+  }, [requests]);
 
   useFocusEffect(
     useCallback(() => {

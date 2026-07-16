@@ -103,14 +103,16 @@ export default function SharedPostScreen() {
         <Text className="text-white text-lg font-semibold">Shared Post</Text>
       </View>
 
-      <View className="h-screen w-full items-center justify-center">
-        <Pressable
-          onPress={() => setThreadVisible(true)}
-          className="h-10 px-2 items-center justify-center rounded-full bg-primary"
-        >
-          <Text className="text-white font-semibold">Open Post</Text>
-        </Pressable>
-      </View>
+      {post && !threadVisible && (
+        <View className="flex-1 items-center justify-center">
+          <Pressable
+            onPress={() => setThreadVisible(true)}
+            className="h-10 px-4 items-center justify-center rounded-full bg-primary"
+          >
+            <Text className="text-white font-semibold">Open Post</Text>
+          </Pressable>
+        </View>
+      )}
       {loading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color={colors.primary} />

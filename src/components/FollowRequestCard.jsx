@@ -1,16 +1,25 @@
 import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { CheckIcon as Check, UserIcon as User, XIcon as X, VerifiedIcon as Verified } from "../lib/icons";
 import colors from "../lib/colors.json";
 
 const FollowRequestCard = ({ item, onAccept, onReject, actionType }) => {
+  const router = useRouter();
   const isAccepting = actionType === "accept";
   const isRejecting = actionType === "reject";
   const disabled = !!actionType;
 
+  const handleProfilePress = () => {
+    router.push({
+      pathname: "/profile/[username]",
+      params: { username: item.username },
+    });
+  };
+
   return (
     <View className="flex-row items-center justify-between border-b border-white/20 py-4">
       {/* Profile Info */}
-      <View className="flex-row items-center gap-3 flex-1 mr-3">
+      <Pressable onPress={handleProfilePress} className="flex-row items-center gap-3 flex-1 mr-3">
         <View className="w-10 h-10 rounded-full bg-white/10 border border-white/20 items-center justify-center overflow-hidden">
           {item.avatar ? (
             <Image
@@ -39,7 +48,7 @@ const FollowRequestCard = ({ item, onAccept, onReject, actionType }) => {
             @{item.username} wants to follow you
           </Text>
         </View>
-      </View>
+      </Pressable>
 
       {/* Action Buttons */}
       <View className="flex-row gap-2">

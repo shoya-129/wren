@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import { useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import api, {
   clearApiAuthToken,
   setApiAuthToken,
@@ -83,6 +84,7 @@ function persistToken(nextToken) {
 
 export function UserProvider({ children }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const mountedRef = useRef(false);
   const [isHydrating, setIsHydrating] = useState(true);
 
@@ -294,7 +296,14 @@ export function UserProvider({ children }) {
         safeRemoveStorageItem("likedPosts"),
         safeRemoveStorageItem("dislikedPosts"),
         safeRemoveStorageItem("repostedPosts"),
+        safeRemoveStorageItem("profiles_cache"),
+        safeRemoveStorageItem("cached_feed_posts_decrypted"),
+        safeRemoveStorageItem("cached_feed_posts_raw"),
+        safeRemoveStorageItem("cached_replies_by_post"),
+        safeRemoveStorageItem("cached_follow_requests"),
       ]);
+
+      queryClient.clear();
 
       setUser(null);
       setToken(null);
@@ -546,7 +555,14 @@ export function UserProvider({ children }) {
       safeRemoveStorageItem("likedPosts"),
       safeRemoveStorageItem("dislikedPosts"),
       safeRemoveStorageItem("repostedPosts"),
+      safeRemoveStorageItem("profiles_cache"),
+      safeRemoveStorageItem("cached_feed_posts_decrypted"),
+      safeRemoveStorageItem("cached_feed_posts_raw"),
+      safeRemoveStorageItem("cached_replies_by_post"),
+      safeRemoveStorageItem("cached_follow_requests"),
     ]);
+
+    queryClient.clear();
 
     setUser(null);
     setToken(null);

@@ -4,11 +4,11 @@
     "slug": "wren",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/wren.png",
     "scheme": "wren",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/wren.png"
     },
     "android": {
       "intentFilters": [
@@ -28,10 +28,8 @@
         }
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#000000",
+        "foregroundImage": "./assets/images/wren-rbg-white.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.nullvoid.wren",
@@ -40,16 +38,16 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/wren.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#000000",
           "android": {
-            "image": "./assets/images/splash-icon.png",
+            "image": "./assets/images/wren.png",
             "imageWidth": 76
           }
         }
